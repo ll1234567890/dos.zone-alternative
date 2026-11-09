@@ -1,0 +1,7 @@
+node_modules/
+_site/
+# Never commit game data
+*.jsdos
+*.iso
+*.cue
+*.bin

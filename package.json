@@ -1,0 +1,16 @@
+{
+  "name": "dos-zone-alternative",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A small browser DOS game portal hosted on GitHub Pages. First game: Warcraft II with online multiplayer.",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "serve": "node scripts/serve.mjs",
+    "start": "npm run build && npm run serve"
+  },
+  "dependencies": {
+    "fflate": "0.8.3",
+    "js-dos": "8.5.3"
+  }
+}
