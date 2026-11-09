@@ -248,6 +248,10 @@ export async function launch(el, blob, o) {
     autoStart: true,
     autoSave: true,
     noCloud: true,
+    // Same rendering path dos.zone uses: the emulator worker draws straight
+    // to an OffscreenCanvas, keeping frame copies off the main thread.
+    offscreenCanvas: true,
+    renderBackend: "canvas",
     // stable key so saved games survive reloads even though the URL is a blob
     fsChanges: { urlToKey: () => `dosharbor-${o.gameId}.changes` },
   };

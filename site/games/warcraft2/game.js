@@ -6,9 +6,10 @@ const GAME = {
   id: "warcraft2",
   exe: "WAR2.EXE",
   defaultDir: "WAR2",
+  // Settings mirror dos.zone's own Warcraft II bundle (cdn.dos.zone/custom/dos/war2.jsdos).
   dosboxConf: ({ gameDir, exe, cdImage }) => [
     "[sdl]",
-    "autolock=true",
+    "autolock=false",
     "",
     "[dosbox]",
     "machine=svga_s3",
@@ -17,18 +18,31 @@ const GAME = {
     "[cpu]",
     "core=auto",
     "cputype=auto",
-    // Warcraft II needs roughly a fast 486. Unlimited "max" makes the emulator
-    // burn CPU the game doesn't use, starving video and audio in the browser.
-    "cycles=max limit 40000",
+    // auto = full speed once the game enters protected mode, which js-dos then
+    // tunes to what the browser can sustain. A fixed cap starved slower runs.
+    "cycles=auto",
     "",
     "[mixer]",
     "rate=44100",
+    "blocksize=1024",
+    "prebuffer=20",
+    "",
+    "[render]",
+    "frameskip=0",
+    "aspect=false",
+    "scaler=none",
     "",
     "[sblaster]",
     "sbtype=sb16",
+    "sbbase=220",
     "irq=7",
     "dma=1",
     "hdma=5",
+    "",
+    "[dos]",
+    "xms=true",
+    "ems=true",
+    "umb=true",
     "",
     "[ipx]",
     "ipx=true",
@@ -158,7 +172,7 @@ function start(mode) {
   const hint = $("game-hint");
   if (mode === "solo") {
     info.textContent = "Single player";
-    hint.textContent = "Click the game to capture the mouse. Press Esc to release it.";
+    hint.textContent = "Progress saves when you click Leave or switch tabs. The floppy icon in the sidebar saves too.";
   } else if (mode === "host") {
     info.textContent = "Hosting: creating room…";
     hint.textContent = "In Warcraft II: Multi Player Game → IPX Network → Create Game. Send the invite link to your friends.";
@@ -168,7 +182,7 @@ function start(mode) {
     hint.textContent = "Once connected: Multi Player Game → IPX Network, then pick the host's game. The host must already be in the IPX lobby.";
   }
 
-  launch($("dos"), bundle.blob, {
+  const running = launch($("dos"), bundle.blob, {
     gameId: GAME.id,
     mode,
     room,
@@ -204,6 +218,27 @@ function start(mode) {
     el.classList.remove("hidden");
     el.classList.add("err");
     el.textContent = "Network: " + (e.message || e);
+  });
+  keepSaved(running);
+}
+
+// Mouse lock is off (like dos.zone), so js-dos rarely triggers its own save.
+// Save game files when leaving the game or switching away from the tab.
+function keepSaved(running) {
+  const save = async () => {
+    const dos = await running;
+    if (!dos) return;
+    await Promise.race([dos.save(), new Promise((r) => setTimeout(r, 4000))]).catch(console.warn);
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") save();
+  });
+  $("leave").addEventListener("click", async (e) => {
+    e.preventDefault();
+    const href = $("leave").href;
+    $("leave").textContent = "Saving…";
+    await save();
+    location.href = href;
   });
 }
 
