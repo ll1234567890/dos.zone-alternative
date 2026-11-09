@@ -32,7 +32,6 @@
         <li>Games run in <a href="https://js-dos.com">js-dos</a>, a DOSBox build for the web.</li>
         <li>This site does not host game files. You load your own copy, and it is kept in your browser's storage so you only do it once.</li>
         <li>Multiplayer uses emulated IPX networking through our relay server. One player hosts a room, shares the link, and friends join from anywhere.</li>
-        <li>Windows games boot from your own Windows 95/98 disk image in DOSBox-X.</li>
       </ul>
     </section>
   </main>
@@ -64,7 +63,7 @@
       a.querySelector("h2").textContent = g.title;
       a.querySelector("p").textContent = g.blurb;
       const tags = a.querySelector(".tags");
-      for (const [text, cls] of [[String(g.year), ""], [g.genre, ""], ...(g.platform ? [[g.platform, ""]] : []), ...(g.multiplayer ? [["Online multiplayer", "mp"]] : [])]) {
+      for (const [text, cls] of [[String(g.year), ""], [g.genre, ""], ...(g.multiplayer ? [["Online multiplayer", "mp"]] : [])]) {
         const t = document.createElement("span");
         t.className = "tag " + cls;
         t.textContent = text;

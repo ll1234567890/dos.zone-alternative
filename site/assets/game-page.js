@@ -3,7 +3,6 @@
 //
 // A game page provides a GAME object:
 //   id, title          storage key and display name
-//   kind               "dos" (default) or "win9x" (Windows 95/98 disk image in DOSBox-X)
 //   exe, defaultDir    DOS games: program to find in the loaded files
 //   cycles             optional fixed CPU speed applied to any bundle
 //   backend            "dosbox" (default) or "dosboxX"
@@ -22,14 +21,12 @@ export function initGamePage(GAME) {
     el.className = "status " + kind;
   };
   const params = new URLSearchParams(location.search);
-  const isWin = GAME.kind === "win9x";
 
   let bundle = null; // { blob, info }
 
   /** Latest DOSBox config for bundles we built from loose files (null for user .jsdos bundles). */
   function currentConf(info) {
     if (info?.source !== "files") return null;
-    if (isWin) return info.disks ? GAME.dosboxConf({ disks: info.disks, cdImage: info.cdImage || null }) : null;
     if (!info.exe) return null;
     const gameDir = info.gameDir || info.exe.split("\\")[0];
     return GAME.dosboxConf({ gameDir, exe: GAME.exe, cdImage: info.cdImage || null });
@@ -45,7 +42,6 @@ export function initGamePage(GAME) {
       const mb = (blob.size / 1048576).toFixed(1);
       const parts = [`Game files loaded (${mb} MB)`];
       if (info.exe) parts.push(`runs ${info.exe}`);
-      if (info.disks) parts.push(`boots ${info.disks.map((d) => d.split("/").pop()).join(" + ")}`);
       if (info.source === "jsdos") parts.push("your own .jsdos bundle");
       else parts.push(info.cdImage ? "CD image attached" : "no CD image");
       $("ready-text").textContent = parts.join(" · ") + ".";
@@ -66,8 +62,7 @@ export function initGamePage(GAME) {
       status("Ready to play.", "ok");
     } catch (e) {
       console.error(e);
-      const oom = e instanceof RangeError || /allocation|memory/i.test(String(e?.message));
-      status(oom ? "The browser ran out of memory reading these files. Try a smaller (or .qcow2) disk image." : e.message || String(e), "err");
+      status(e.message || String(e), "err");
     }
   }
 
@@ -204,20 +199,16 @@ export function initGamePage(GAME) {
   }
 
   // Mouse lock is off (like dos.zone), so js-dos rarely triggers its own save.
-  // DOS games: save when leaving or switching tabs. Windows games keep their
-  // whole disk image as one changed file, so saving is big and only safe after
-  // Windows shuts down: save on Leave only.
+  // Save game files when leaving the game or switching away from the tab.
   function keepSaved(running) {
     const save = async () => {
       const dos = await running;
       if (!dos) return;
-      await Promise.race([dos.save(), new Promise((r) => setTimeout(r, isWin ? 30000 : 4000))]).catch(console.warn);
+      await Promise.race([dos.save(), new Promise((r) => setTimeout(r, 4000))]).catch(console.warn);
     };
-    if (!isWin) {
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "hidden") save();
-      });
-    }
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") save();
+    });
     $("leave").addEventListener("click", async (e) => {
       e.preventDefault();
       const href = $("leave").href;
@@ -238,9 +229,7 @@ export function initGamePage(GAME) {
         bundle = { blob: saved.blob, info: saved.info || {} };
         // keep stored bundles on the current config: ours, or a patched .jsdos one
         const conf = currentConf(bundle.info) || ((old) => tuneConf(old, GAME));
-        // unpacking a multi-hundred-MB Windows disk on every visit is slow, so
-        // only DOS bundles are migrated automatically
-        const updated = isWin ? null : await updateBundleConf(bundle.blob, conf);
+        const updated = await updateBundleConf(bundle.blob, conf);
         if (updated) {
           bundle.blob = updated;
           await storage.put(GAME.id, { ...saved, blob: updated });
