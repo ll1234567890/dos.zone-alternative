@@ -71,6 +71,18 @@
       }
       grid.append(a);
     }
+    // any other DOS game the player owns
+    const custom = document.createElement("a");
+    custom.className = "card";
+    custom.href = "games/custom/";
+    custom.innerHTML = `
+      <div class="cover custom" aria-hidden="true">+ ANY</div>
+      <div class="body">
+        <h2>Custom game</h2>
+        <p>Run any DOS game you own: load a folder, zip or .jsdos file, pick the program and tune every DOSBox setting.</p>
+        <div class="tags"><span class="tag">Any DOS game</span><span class="tag mp">Online multiplayer</span></div>
+      </div>`;
+    grid.append(custom);
   </script>
 </body>
 </html>

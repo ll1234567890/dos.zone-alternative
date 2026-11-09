@@ -43,6 +43,7 @@ export const storage = {
   get: (id) => tx("readonly", (s) => s.get(id)),
   put: (id, value) => tx("readwrite", (s) => s.put(value, id)),
   remove: (id) => tx("readwrite", (s) => s.delete(id)),
+  keys: () => tx("readonly", (s) => s.getAllKeys()),
 };
 
 /* ------------------------------------------------------------ reading input */
@@ -90,14 +91,14 @@ export async function filesFromDrop(dataTransfer) {
   return files;
 }
 
-function unzip(bytes) {
+export function unzip(bytes) {
   return new Promise((resolve, reject) => {
     // async unzip keeps the page responsive on large archives
     window.fflate.unzip(bytes, (err, data) => (err ? reject(err) : resolve(data)));
   });
 }
 
-function zip(files) {
+export function zip(files) {
   return new Promise((resolve, reject) => {
     // level 0: DOS games are small and already-compressed data gains little
     window.fflate.zip(files, { level: 0 }, (err, data) => (err ? reject(err) : resolve(data)));
