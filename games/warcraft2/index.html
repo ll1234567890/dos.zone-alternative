@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Warcraft II · DOS Harbor</title>
+  <meta name="description" content="Play Warcraft II: Tides of Darkness in your browser, solo or online with friends.">
+  <link rel="stylesheet" href="../../vendor/js-dos/js-dos.css">
+  <link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="brand" href="../../">DOS<span>Harbor</span></a>
+      <nav><a href="../../">All games</a></nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero game-hero" id="hero" style="--hero-bg: url('https://dos.zone/images/containers/assets/backgrounds/warcraft2_bg.jpg/612aad8d8fcd3ae169f3681bf2874fa1.webp')">
+      <h1>Warcraft II: Tides of Darkness</h1>
+      <p>Blizzard, 1995 · Real-time strategy · Up to 8 players over IPX</p>
+    </section>
+
+    <!-- ---------------- setup ---------------- -->
+    <div class="player-layout setup" id="setup">
+      <div>
+        <section class="panel" style="margin-bottom:20px">
+          <h2><span class="step-num">1</span> Load your game files</h2>
+          <div id="files-missing">
+            <p>This site does not host Warcraft II. Use your own copy of the <strong>DOS version</strong>, which is the folder that contains <code>WAR2.EXE</code>.</p>
+            <div class="dropzone" id="drop">
+              <strong>Drop the game folder or a .zip here</strong><br>
+              or pick it:
+              <div class="row" style="justify-content:center;margin-top:10px">
+                <button class="dh-btn" id="pick-zip" type="button">Choose .zip / .jsdos</button>
+                <button class="dh-btn" id="pick-dir" type="button">Choose folder</button>
+              </div>
+            </div>
+            <input type="file" id="in-zip" accept=".zip,.jsdos" hidden>
+            <input type="file" id="in-dir" webkitdirectory multiple hidden>
+            <p style="margin:0">Optional: put a CD image (<code>.cue</code>/<code>.bin</code> or <code>.iso</code>) in the same folder or zip. It is mounted as drive D: for CD music and cutscenes.</p>
+          </div>
+          <div id="files-ready" class="hidden">
+            <p id="ready-text"></p>
+            <div class="row">
+              <button class="dh-btn small" id="replace" type="button">Replace files</button>
+              <button class="dh-btn small" id="reset-changes" type="button">Reset game settings &amp; saves</button>
+              <button class="dh-btn small" id="forget" type="button">Remove from this browser</button>
+            </div>
+          </div>
+          <p class="status" id="status" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="panel">
+          <h2><span class="step-num">2</span> Choose how to play</h2>
+          <div class="modes">
+            <div class="mode">
+              <h3>Single player</h3>
+              <p>Campaigns, custom scenarios and skirmish against the computer.</p>
+              <button class="dh-btn primary needs-files" data-mode="solo" type="button" disabled>Play</button>
+            </div>
+            <div class="mode">
+              <h3>Host an online game</h3>
+              <p>You get a room code and a link to send to friends. Start the game first, then they join.</p>
+              <button class="dh-btn primary needs-files" data-mode="host" type="button" disabled>Host room</button>
+            </div>
+            <div class="mode">
+              <h3>Join a friend</h3>
+              <p>Paste the room code or link your host sent you.</p>
+              <div class="row">
+                <input type="text" id="join-code" placeholder="room code or link" autocomplete="off" spellcheck="false">
+                <button class="dh-btn primary needs-files" data-mode="join" type="button" disabled>Join</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <aside class="panel">
+        <h2>Playing online</h2>
+        <p>Every player needs their own copy of the game, ideally the same version.</p>
+        <p><strong>Host</strong></p>
+        <ol>
+          <li>Click <em>Host room</em> and copy the link from the bar above the game.</li>
+          <li>In Warcraft II, choose <em>Multi Player Game</em>, then <em>IPX Network</em>.</li>
+          <li>Enter your name and click <em>Create Game</em>, then wait in the lobby.</li>
+        </ol>
+        <p><strong>Everyone else</strong></p>
+        <ol>
+          <li>Open the link (or paste the code) and click <em>Join</em>.</li>
+          <li>Wait for "connected", then choose <em>Multi Player Game</em>, then <em>IPX Network</em>.</li>
+          <li>Pick the host's game from the list and join.</li>
+        </ol>
+        <p><strong>Tips</strong></p>
+        <ul>
+          <li>If the mouse feels off, turn on mouse lock in the js-dos sidebar settings. Press <span class="dh-kbd">Esc</span> to release it.</li>
+          <li>Saved games and settings are stored in this browser when you click <em>Leave</em> or switch tabs.</li>
+          <li>Players connect peer-to-peer over WebRTC. On strict corporate or mobile networks a connection can fail.</li>
+          <li>The js-dos sidebar has fullscreen, speed and keyboard tools.</li>
+          <li>No music? In Warcraft II's sound options, turn CD audio off and the music volume up. If you changed the sound card in SETUP, use <em>Reset game settings</em>.</li>
+        </ul>
+      </aside>
+    </div>
+
+    <!-- ---------------- game ---------------- -->
+    <section class="game-shell hidden" id="game">
+      <div class="game-bar">
+        <div id="game-info">Single player</div>
+        <div class="row">
+          <button class="dh-btn small hidden" id="copy-link" type="button">Copy invite link</button>
+          <a class="dh-btn small" href="./" id="leave">Leave</a>
+        </div>
+      </div>
+      <div id="dos"></div>
+      <p class="hint" id="game-hint"></p>
+      <p class="hint net-log hidden" id="net-log" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+
+  <script src="../../vendor/fflate.js"></script>
+  <script src="../../vendor/js-dos/js-dos.js"></script>
+  <script type="module" src="./game.js"></script>
+</body>
+</html>
