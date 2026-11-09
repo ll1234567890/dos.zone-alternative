@@ -1,6 +1,14 @@
 // Browser side of the DOS Harbor relay (see server/server.js).
 // Implements the js-dos `NetInstance` interface, so it can be handed to js-dos
 // as `sharedNet` in place of its built-in WebRTC networking.
+//
+// If the socket drops (hidden tab, Wi-Fi blip, sleeping laptop) it reconnects
+// and resumes the same server session, so the peer id and the running game
+// survive. Outgoing packets are queued meanwhile.
+
+const KEEPALIVE_MS = 20000;
+const MAX_OUTBOX = 1024;
+const GIVE_UP_MS = 170000; // a little under the server's default grace period
 
 /**
  * Connect to the relay and resolve once it has assigned a peer id.
@@ -13,9 +21,14 @@ export function connectRelay(url, hooks = {}) {
     const inbox = [];
     const queries = new Map(); // q -> [resolve...]
     const registers = new Map(); // alias -> {resolve, reject}
+    const outbox = []; // packets sent while disconnected
     let ws;
     let settled = false;
     let closedByUs = false;
+    let token = "";
+    let lostAt = 0; // when the current outage began (0 = connected)
+    let retryTimer = null;
+    let retryDelay = 500;
 
     const net = {
       peerId: 0,
@@ -38,13 +51,17 @@ export function connectRelay(url, hooks = {}) {
         });
       },
       sendBinary(data, peerId) {
-        if (!ws || ws.readyState !== WebSocket.OPEN) return 0;
         if (peerId === net.peerId || peerId === 0) throw new Error("Cannot send to self (" + peerId + ")");
         const frame = new Uint8Array(4 + data.byteLength);
         new DataView(frame.buffer).setUint32(0, peerId >>> 0, true);
         frame.set(data, 4);
-        ws.send(frame);
         net.connected.add(peerId);
+        if (ws && ws.readyState === WebSocket.OPEN && !lostAt) {
+          ws.send(frame);
+        } else {
+          if (outbox.length >= MAX_OUTBOX) outbox.shift();
+          outbox.push(frame);
+        }
         return data.byteLength || 1;
       },
       recvBinary() {
@@ -58,6 +75,8 @@ export function connectRelay(url, hooks = {}) {
       shutdown() {},
       close() {
         closedByUs = true;
+        clearTimeout(retryTimer);
+        if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "bye" }));
         ws?.close();
       },
     };
@@ -75,11 +94,16 @@ export function connectRelay(url, hooks = {}) {
     }
 
     function open(attempt) {
-      log(attempt ? `reconnecting to ${url}…` : `connecting to ${url}…`);
-      ws = new WebSocket(url);
-      ws.binaryType = "arraybuffer";
+      const resuming = settled && token;
+      const target = resuming
+        ? `${url}${url.includes("?") ? "&" : "?"}resume=${net.peerId}&token=${encodeURIComponent(token)}`
+        : url;
+      if (!settled) log(attempt ? `reconnecting to ${url}…` : `connecting to ${url}…`);
+      const sock = new WebSocket(target);
+      ws = sock;
+      sock.binaryType = "arraybuffer";
 
-      ws.onmessage = (ev) => {
+      sock.onmessage = (ev) => {
         if (typeof ev.data !== "string") {
           const buf = new Uint8Array(ev.data);
           if (buf.length < 5) return;
@@ -91,8 +115,24 @@ export function connectRelay(url, hooks = {}) {
         let msg;
         try { msg = JSON.parse(ev.data); } catch { return; }
         if (msg.t === "welcome") {
+          if (resuming && msg.resumed === false) {
+            // the server already gave up on our old session
+            closedByUs = true;
+            sock.send(JSON.stringify({ t: "bye" })); // free the fresh session the server opened
+            sock.close();
+            log("multiplayer session expired while you were away; leave and rejoin the room", true);
+            return;
+          }
           net.peerId = msg.id;
-          log(`connected to relay, peer id ${msg.id}`);
+          token = msg.token || token;
+          retryDelay = 500;
+          if (resuming) {
+            log(`reconnected to relay after ${Math.round((Date.now() - lostAt) / 1000)} s, peer id ${msg.id}`);
+          } else {
+            log(`connected to relay, peer id ${msg.id}`);
+          }
+          lostAt = 0;
+          for (const frame of outbox.splice(0)) sock.send(frame);
           if (!settled) { settled = true; resolve(net); }
         } else if (msg.t === "registered") {
           const p = registers.get(msg.alias);
@@ -106,8 +146,8 @@ export function connectRelay(url, hooks = {}) {
         }
       };
 
-      ws.onclose = () => {
-        if (closedByUs) return;
+      sock.onclose = () => {
+        if (closedByUs || sock !== ws) return;
         if (!settled) {
           if (attempt >= 4) {
             settled = true;
@@ -115,15 +155,41 @@ export function connectRelay(url, hooks = {}) {
             reject(new Error("Could not reach the multiplayer relay"));
             return;
           }
-        } else {
-          // A new socket means a new peer id, so the running game session
-          // can't continue. Tell the player instead of silently retrying.
-          log("lost connection to the multiplayer relay; leave and rejoin the room", true);
+          retryTimer = setTimeout(() => open(attempt + 1), 1000 * (attempt + 1));
           return;
         }
-        setTimeout(() => open(attempt + 1), 1000 * (attempt + 1));
+        if (!lostAt) {
+          lostAt = Date.now();
+          log("connection to the relay dropped, reconnecting…");
+        }
+        scheduleReconnect();
       };
     }
+
+    function scheduleReconnect(now = false) {
+      clearTimeout(retryTimer);
+      if (closedByUs) return;
+      if (!now && Date.now() - lostAt > GIVE_UP_MS) {
+        log("could not reconnect to the multiplayer relay; leave and rejoin the room", true);
+        return;
+      }
+      retryTimer = setTimeout(() => open(1), now ? 0 : retryDelay);
+      retryDelay = Math.min(retryDelay * 2, 5000);
+    }
+
+    // Background tabs get throttled timers, so retry right away when the
+    // player comes back instead of waiting for the next backoff step.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && settled && lostAt && ws?.readyState !== WebSocket.CONNECTING) {
+        retryDelay = 500;
+        scheduleReconnect(true);
+      }
+    });
+
+    // Keep idle connections alive through proxies and load balancers.
+    setInterval(() => {
+      if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "ping" }));
+    }, KEEPALIVE_MS);
 
     window.addEventListener("pagehide", () => net.close());
     open(0);

@@ -49,7 +49,9 @@ Then put its URL in `site/assets/config.js`:
 export const RELAY_URL = "wss://dosharbor-relay.onrender.com";
 ```
 
-Environment variables: `PORT` (default 8787) and `ALLOWED_ORIGINS` (comma-separated list of site origins allowed to connect; empty allows all).
+Environment variables: `PORT` (default 8787), `ALLOWED_ORIGINS` (comma-separated list of site origins allowed to connect; empty allows all) and `GRACE_MS` (default 180000).
+
+If a player's connection drops (hidden tab, Wi-Fi blip, sleeping laptop), the relay keeps their peer ID and room for `GRACE_MS`. The browser reconnects and resumes the same session, so the game continues: the other players see Warcraft II's "Waiting for players" dialog until then.
 
 To try a relay without changing the config, add `?server=wss://your-relay` to the game page URL. Invite links keep it.
 
