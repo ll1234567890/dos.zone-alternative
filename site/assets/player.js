@@ -1,9 +1,13 @@
 // Shared player logic: turn the user's own game files into a js-dos bundle,
 // keep it in the browser, and launch it in single-player, host or join mode.
 //
-// Multiplayer: js-dos 8.5 emulates IPX over WebRTC. The host starts an IPX
-// server inside DOSBox and registers a short room alias on the js-dos peer
-// server (net.dos.zone). Joiners look the alias up and connect directly.
+// Multiplayer: the host starts an IPX server inside DOSBox and registers a
+// short room alias; joiners look the alias up and connect. Packets go through
+// our own relay (server/, configured in config.js) or, if none is configured,
+// js-dos' built-in WebRTC networking via the public net.dos.zone server.
+
+import { RELAY_URL } from "./config.js";
+import { connectRelay } from "./relay-net.js";
 
 const VENDOR = new URL("../vendor/", import.meta.url);
 export const EMULATORS_PATH = new URL("js-dos/emulators/", VENDOR).href;
@@ -250,11 +254,28 @@ export async function launch(el, blob, o) {
   if (o.mode === "host") options.startIpxServer = true;
   if (o.mode === "join") options.connectIpxAddress = o.room.address;
 
-  if (o.mode !== "solo") watchNetwork(o);
+  if (o.mode !== "solo") {
+    const relay = relayUrl();
+    if (relay) {
+      // our own relay: hand js-dos a ready network instance
+      const net = await connectRelay(relay, { onLog: o.onNetLog });
+      window.net = net;
+      options.sharedNet = net;
+    } else {
+      watchNetwork(o);
+    }
+  }
   const dos = window.Dos(el, options);
 
   if (o.mode === "host") hostRoom(o).catch((e) => o.onRoom?.({ error: e.message }));
   return dos;
+}
+
+/** Relay in use: `?server=` parameter, else config.js, else none (net.dos.zone). */
+export function relayUrl() {
+  const param = new URLSearchParams(location.search).get("server");
+  if (param && /^wss?:\/\//.test(param)) return param;
+  return RELAY_URL || "";
 }
 
 // The WebRTC networking library only reports problems on the console. Mirror

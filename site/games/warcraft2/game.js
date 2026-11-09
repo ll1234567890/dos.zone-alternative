@@ -133,6 +133,8 @@ function inviteLink(code) {
   u.search = "";
   u.hash = "";
   u.searchParams.set("join", code);
+  const server = new URLSearchParams(location.search).get("server");
+  if (server) u.searchParams.set("server", server);
   return u.href;
 }
 
@@ -196,8 +198,17 @@ function start(mode) {
         setTimeout(() => (copy.textContent = "Copy invite link"), 1500);
       };
     },
+  }).catch((e) => {
+    console.error(e);
+    const el = $("net-log");
+    el.classList.remove("hidden");
+    el.classList.add("err");
+    el.textContent = "Network: " + (e.message || e);
   });
 }
+
+// keep a custom relay (?server=) when leaving the game
+if (params.get("server")) $("leave").href = "./?server=" + encodeURIComponent(params.get("server"));
 
 /* ---- init ---- */
 (async () => {
