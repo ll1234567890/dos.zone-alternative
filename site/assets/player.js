@@ -121,7 +121,7 @@ export async function buildBundle(files, game, onProgress = () => {}) {
   const confPath = paths.find((p) => norm(p).toLowerCase() === ".jsdos/dosbox.conf");
   if (confPath) {
     const conf = new TextDecoder().decode(files[confPath]);
-    files[confPath] = new TextEncoder().encode(ensureIpx(conf));
+    files[confPath] = new TextEncoder().encode(tuneConf(conf, game));
     onProgress("Packing bundle…");
     return { bytes: await zip(files), info: { source: "jsdos", exe: null } };
   }
@@ -169,6 +169,24 @@ export async function buildBundle(files, game, onProgress = () => {}) {
   };
 }
 
+/** Apply our required settings to someone else's dosbox.conf: IPX on, and the
+ * game's fixed CPU speed (`cycles=auto/max` can't keep real time in a browser). */
+export function tuneConf(conf, game) {
+  let out = ensureIpx(conf);
+  if (game?.cycles) {
+    if (/^\s*cycles\s*=.*$/im.test(out)) {
+      out = out.replace(/^\s*cycles\s*=.*$/im, "cycles=" + game.cycles);
+    } else if (/^\s*\[cpu\]\s*$/im.test(out)) {
+      out = out.replace(/^(\s*\[cpu\]\s*)$/im, "$1\r\ncycles=" + game.cycles);
+    } else {
+      const block = "[cpu]\r\ncycles=" + game.cycles + "\r\n\r\n";
+      const idx = out.search(/^\s*\[autoexec\]/im);
+      out = idx >= 0 ? out.slice(0, idx) + block + out.slice(idx) : out + "\r\n" + block;
+    }
+  }
+  return out;
+}
+
 function ensureIpx(conf) {
   if (/^\s*\[ipx\]/im.test(conf)) {
     return conf.replace(/^(\s*ipx\s*=\s*)false/im, "$1true");
@@ -179,14 +197,16 @@ function ensureIpx(conf) {
 }
 
 /**
- * Replace .jsdos/dosbox.conf inside a stored bundle when the site's config has
- * changed, so improvements reach players without re-loading their game files.
+ * Replace .jsdos/dosbox.conf inside a stored bundle (a new config string, or a
+ * function old => new) when the site's config has changed, so improvements reach players without re-loading their game files.
  * @returns {Promise<Blob|null>} the updated bundle, or null if already current
  */
-export async function updateBundleConf(blob, conf) {
+export async function updateBundleConf(blob, confOrFn) {
   const files = await unzip(new Uint8Array(await blob.arrayBuffer()));
   const key = Object.keys(files).find((p) => p.toLowerCase() === ".jsdos/dosbox.conf");
-  if (key && new TextDecoder().decode(files[key]) === conf) return null;
+  const old = key ? new TextDecoder().decode(files[key]) : "";
+  const conf = typeof confOrFn === "function" ? confOrFn(old) : confOrFn;
+  if (key && old === conf) return null;
   files[key || ".jsdos/dosbox.conf"] = new TextEncoder().encode(conf);
   return new Blob([await zip(files)], { type: "application/zip" });
 }

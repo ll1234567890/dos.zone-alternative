@@ -1,11 +1,15 @@
 import {
-  storage, readInput, filesFromDrop, buildBundle, launch, normalizeRoom, updateBundleConf,
+  storage, readInput, filesFromDrop, buildBundle, launch, normalizeRoom, updateBundleConf, tuneConf,
 } from "../../assets/player.js";
 
 const GAME = {
   id: "warcraft2",
   exe: "WAR2.EXE",
   defaultDir: "WAR2",
+  // Fixed CPU speed. Measured with the real game: "auto"/"max" ran at 52-95%
+  // of real time in the browser, fixed 30000 holds 100% in battle with room
+  // to spare (Warcraft II wants roughly a fast 486). Ctrl+F11/F12 adjust live.
+  cycles: "fixed 30000",
   // Settings mirror dos.zone's own Warcraft II bundle (cdn.dos.zone/custom/dos/war2.jsdos).
   dosboxConf: ({ gameDir, exe, cdImage }) => [
     "[sdl]",
@@ -18,9 +22,7 @@ const GAME = {
     "[cpu]",
     "core=auto",
     "cputype=auto",
-    // auto = full speed once the game enters protected mode, which js-dos then
-    // tunes to what the browser can sustain. A fixed cap starved slower runs.
-    "cycles=auto",
+    "cycles=" + GAME.cycles,
     "",
     "[mixer]",
     "rate=44100",
@@ -251,8 +253,9 @@ if (params.get("server")) $("leave").href = "./?server=" + encodeURIComponent(pa
     const saved = await storage.get(GAME.id);
     if (saved?.blob) {
       bundle = { blob: saved.blob, info: saved.info || {} };
-      const conf = currentConf(bundle.info);
-      const updated = conf && (await updateBundleConf(bundle.blob, conf));
+      // keep stored bundles on the current config: ours, or a patched .jsdos one
+      const conf = currentConf(bundle.info) || ((old) => tuneConf(old, GAME));
+      const updated = await updateBundleConf(bundle.blob, conf);
       if (updated) {
         bundle.blob = updated;
         await storage.put(GAME.id, { ...saved, blob: updated });
