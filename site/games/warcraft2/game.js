@@ -1,5 +1,5 @@
 import {
-  storage, readInput, filesFromDrop, buildBundle, launch, normalizeRoom, updateBundleConf, tuneConf,
+  storage, readInput, filesFromDrop, buildBundle, launch, normalizeRoom, updateBundleConf, tuneConf, resetChanges,
 } from "../../assets/player.js";
 
 const GAME = {
@@ -116,6 +116,11 @@ $("in-dir").onchange = (e) => ingest(e.target.files);
 $("replace").onclick = () => {
   $("files-ready").classList.add("hidden");
   $("files-missing").classList.remove("hidden");
+};
+$("reset-changes").onclick = async () => {
+  if (!confirm("Reset Warcraft II's saved changes in this browser? This removes settings changed in the game or SETUP, and your saved games.")) return;
+  const removed = await resetChanges(GAME.id);
+  status(removed ? "Saved changes removed. The game starts with its original settings." : "There were no saved changes to remove.", "ok");
 };
 $("forget").onclick = async () => {
   await storage.remove(GAME.id);

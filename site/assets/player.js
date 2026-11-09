@@ -213,6 +213,19 @@ export async function updateBundleConf(blob, confOrFn) {
 
 /* --------------------------------------------------------------- launching */
 
+/** Delete js-dos' saved file changes for a game (settings, saved games). */
+export async function resetChanges(gameId) {
+  const name = `dosharbor-${gameId}.changes`.replace(/[^a-zA-Z0-9._-]/g, "_");
+  try {
+    const root = await navigator.storage.getDirectory();
+    const saves = await (await root.getDirectoryHandle("jsdos")).getDirectoryHandle("saves");
+    await saves.removeEntry(name);
+    return true;
+  } catch {
+    return false; // nothing saved yet
+  }
+}
+
 /** js-dos caches every bundle URL in OPFS. Our blob: URLs change on every
  * launch, so drop old blob entries to stop storage from growing. */
 async function cleanBlobCache() {
@@ -259,6 +272,8 @@ export function normalizeRoom(input) {
  */
 export async function launch(el, blob, o) {
   await cleanBlobCache();
+  // see scripts/build.mjs: plain audio by default, ?audio=worklet to compare
+  window.__dosharborAudioWorklet = new URLSearchParams(location.search).get("audio") === "worklet";
   const url = URL.createObjectURL(blob);
   const options = {
     url,
