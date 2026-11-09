@@ -1,14 +1,19 @@
 import {
-  storage, readInput, filesFromDrop, buildBundle, launch, normalizeRoom,
+  storage, readInput, filesFromDrop, buildBundle, launch, normalizeRoom, updateBundleConf, tuneConf, resetChanges,
 } from "../../assets/player.js";
 
 const GAME = {
   id: "warcraft2",
   exe: "WAR2.EXE",
   defaultDir: "WAR2",
+  // Fixed CPU speed. Measured with the real game: "auto"/"max" ran at 52-95%
+  // of real time in the browser, fixed 30000 holds 100% in battle with room
+  // to spare (Warcraft II wants roughly a fast 486). Ctrl+F11/F12 adjust live.
+  cycles: "fixed 30000",
+  // Settings mirror dos.zone's own Warcraft II bundle (cdn.dos.zone/custom/dos/war2.jsdos).
   dosboxConf: ({ gameDir, exe, cdImage }) => [
     "[sdl]",
-    "autolock=true",
+    "autolock=false",
     "",
     "[dosbox]",
     "machine=svga_s3",
@@ -17,16 +22,29 @@ const GAME = {
     "[cpu]",
     "core=auto",
     "cputype=auto",
-    "cycles=max",
+    "cycles=" + GAME.cycles,
     "",
     "[mixer]",
     "rate=44100",
+    "blocksize=1024",
+    "prebuffer=20",
+    "",
+    "[render]",
+    "frameskip=0",
+    "aspect=false",
+    "scaler=none",
     "",
     "[sblaster]",
     "sbtype=sb16",
+    "sbbase=220",
     "irq=7",
     "dma=1",
     "hdma=5",
+    "",
+    "[dos]",
+    "xms=true",
+    "ems=true",
+    "umb=true",
     "",
     "[ipx]",
     "ipx=true",
@@ -49,6 +67,13 @@ const status = (msg, kind = "") => {
 };
 
 let bundle = null; // { blob, info }
+
+/** Latest DOSBox config for bundles we built from loose files (null for user .jsdos bundles). */
+function currentConf(info) {
+  if (info?.source !== "files" || !info.exe) return null;
+  const gameDir = info.gameDir || info.exe.split("\\")[0];
+  return GAME.dosboxConf({ gameDir, exe: GAME.exe, cdImage: info.cdImage || null });
+}
 
 function renderFiles() {
   const ready = !!bundle;
@@ -92,6 +117,11 @@ $("replace").onclick = () => {
   $("files-ready").classList.add("hidden");
   $("files-missing").classList.remove("hidden");
 };
+$("reset-changes").onclick = async () => {
+  if (!confirm("Reset Warcraft II's saved changes in this browser? This removes settings changed in the game or SETUP, and your saved games.")) return;
+  const removed = await resetChanges(GAME.id);
+  status(removed ? "Saved changes removed. The game starts with its original settings." : "There were no saved changes to remove.", "ok");
+};
 $("forget").onclick = async () => {
   await storage.remove(GAME.id);
   bundle = null;
@@ -124,6 +154,8 @@ function inviteLink(code) {
   u.search = "";
   u.hash = "";
   u.searchParams.set("join", code);
+  const server = new URLSearchParams(location.search).get("server");
+  if (server) u.searchParams.set("server", server);
   return u.href;
 }
 
@@ -147,7 +179,7 @@ function start(mode) {
   const hint = $("game-hint");
   if (mode === "solo") {
     info.textContent = "Single player";
-    hint.textContent = "Click the game to capture the mouse. Press Esc to release it.";
+    hint.textContent = "Progress saves when you click Leave or switch tabs. The floppy icon in the sidebar saves too.";
   } else if (mode === "host") {
     info.textContent = "Hosting: creating room…";
     hint.textContent = "In Warcraft II: Multi Player Game → IPX Network → Create Game. Send the invite link to your friends.";
@@ -157,10 +189,16 @@ function start(mode) {
     hint.textContent = "Once connected: Multi Player Game → IPX Network, then pick the host's game. The host must already be in the IPX lobby.";
   }
 
-  launch($("dos"), bundle.blob, {
+  const running = launch($("dos"), bundle.blob, {
     gameId: GAME.id,
     mode,
     room,
+    onNetLog: (msg, important) => {
+      const el = $("net-log");
+      el.classList.remove("hidden");
+      el.classList.toggle("err", !!important);
+      el.textContent = "Network: " + msg;
+    },
     onRoom: ({ code, error }) => {
       if (error) {
         info.textContent = "Hosting (room could not be created: " + error + ")";
@@ -181,14 +219,53 @@ function start(mode) {
         setTimeout(() => (copy.textContent = "Copy invite link"), 1500);
       };
     },
+  }).catch((e) => {
+    console.error(e);
+    const el = $("net-log");
+    el.classList.remove("hidden");
+    el.classList.add("err");
+    el.textContent = "Network: " + (e.message || e);
+  });
+  keepSaved(running);
+}
+
+// Mouse lock is off (like dos.zone), so js-dos rarely triggers its own save.
+// Save game files when leaving the game or switching away from the tab.
+function keepSaved(running) {
+  const save = async () => {
+    const dos = await running;
+    if (!dos) return;
+    await Promise.race([dos.save(), new Promise((r) => setTimeout(r, 4000))]).catch(console.warn);
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") save();
+  });
+  $("leave").addEventListener("click", async (e) => {
+    e.preventDefault();
+    const href = $("leave").href;
+    $("leave").textContent = "Saving…";
+    await save();
+    location.href = href;
   });
 }
+
+// keep a custom relay (?server=) when leaving the game
+if (params.get("server")) $("leave").href = "./?server=" + encodeURIComponent(params.get("server"));
 
 /* ---- init ---- */
 (async () => {
   try {
     const saved = await storage.get(GAME.id);
-    if (saved?.blob) bundle = { blob: saved.blob, info: saved.info || {} };
+    if (saved?.blob) {
+      bundle = { blob: saved.blob, info: saved.info || {} };
+      // keep stored bundles on the current config: ours, or a patched .jsdos one
+      const conf = currentConf(bundle.info) || ((old) => tuneConf(old, GAME));
+      const updated = await updateBundleConf(bundle.blob, conf);
+      if (updated) {
+        bundle.blob = updated;
+        await storage.put(GAME.id, { ...saved, blob: updated });
+      }
+    }
   } catch (e) {
     console.warn("storage unavailable", e);
     status("Browser storage is unavailable (private mode?). You will need to load the files each visit.");

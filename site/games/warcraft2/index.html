@@ -17,7 +17,7 @@
   </header>
 
   <main class="wrap">
-    <section class="hero" id="hero">
+    <section class="hero game-hero" id="hero" style="--hero-bg: url('https://dos.zone/images/containers/assets/backgrounds/warcraft2_bg.jpg/612aad8d8fcd3ae169f3681bf2874fa1.webp')">
       <h1>Warcraft II: Tides of Darkness</h1>
       <p>Blizzard, 1995 · Real-time strategy · Up to 8 players over IPX</p>
     </section>
@@ -45,6 +45,7 @@
             <p id="ready-text"></p>
             <div class="row">
               <button class="dh-btn small" id="replace" type="button">Replace files</button>
+              <button class="dh-btn small" id="reset-changes" type="button">Reset game settings &amp; saves</button>
               <button class="dh-btn small" id="forget" type="button">Remove from this browser</button>
             </div>
           </div>
@@ -93,10 +94,11 @@
         </ol>
         <p><strong>Tips</strong></p>
         <ul>
-          <li>Click the game to capture the mouse. Press <span class="dh-kbd">Esc</span> to release it.</li>
-          <li>Saved games and settings are stored in this browser automatically.</li>
+          <li>If the mouse feels off, turn on mouse lock in the js-dos sidebar settings. Press <span class="dh-kbd">Esc</span> to release it.</li>
+          <li>Saved games and settings are stored in this browser when you click <em>Leave</em> or switch tabs.</li>
           <li>Players connect peer-to-peer over WebRTC. On strict corporate or mobile networks a connection can fail.</li>
           <li>The js-dos sidebar has fullscreen, speed and keyboard tools.</li>
+          <li>No music? In Warcraft II's sound options, turn CD audio off and the music volume up. If you changed the sound card in SETUP, use <em>Reset game settings</em>.</li>
         </ul>
       </aside>
     </div>
@@ -112,6 +114,7 @@
       </div>
       <div id="dos"></div>
       <p class="hint" id="game-hint"></p>
+      <p class="hint net-log hidden" id="net-log" role="status" aria-live="polite"></p>
     </section>
   </main>
 

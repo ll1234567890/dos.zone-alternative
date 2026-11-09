@@ -7,7 +7,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "serve": "node scripts/serve.mjs",
-    "start": "npm run build && npm run serve"
+    "start": "npm run build && npm run serve",
+    "deploy:branch": "bash scripts/deploy-branch.sh"
   },
   "dependencies": {
     "fflate": "0.8.3",

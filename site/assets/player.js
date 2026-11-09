@@ -1,9 +1,13 @@
 // Shared player logic: turn the user's own game files into a js-dos bundle,
 // keep it in the browser, and launch it in single-player, host or join mode.
 //
-// Multiplayer: js-dos 8.5 emulates IPX over WebRTC. The host starts an IPX
-// server inside DOSBox and registers a short room alias on the js-dos peer
-// server (net.dos.zone). Joiners look the alias up and connect directly.
+// Multiplayer: the host starts an IPX server inside DOSBox and registers a
+// short room alias; joiners look the alias up and connect. Packets go through
+// our own relay (server/, configured in config.js) or, if none is configured,
+// js-dos' built-in WebRTC networking via the public net.dos.zone server.
+
+import { RELAY_URL } from "./config.js";
+import { connectRelay } from "./relay-net.js";
 
 const VENDOR = new URL("../vendor/", import.meta.url);
 export const EMULATORS_PATH = new URL("js-dos/emulators/", VENDOR).href;
@@ -117,7 +121,7 @@ export async function buildBundle(files, game, onProgress = () => {}) {
   const confPath = paths.find((p) => norm(p).toLowerCase() === ".jsdos/dosbox.conf");
   if (confPath) {
     const conf = new TextDecoder().decode(files[confPath]);
-    files[confPath] = new TextEncoder().encode(ensureIpx(conf));
+    files[confPath] = new TextEncoder().encode(tuneConf(conf, game));
     onProgress("Packing bundle…");
     return { bytes: await zip(files), info: { source: "jsdos", exe: null } };
   }
@@ -161,8 +165,26 @@ export async function buildBundle(files, game, onProgress = () => {}) {
   onProgress(`Packing ${outPaths.length} files…`);
   return {
     bytes: await zip(out),
-    info: { source: "files", exe: `${gameDir}\\${game.exe}`, cdImage, fileCount: outPaths.length },
+    info: { source: "files", exe: `${gameDir}\\${game.exe}`, gameDir, cdImage, fileCount: outPaths.length },
   };
+}
+
+/** Apply our required settings to someone else's dosbox.conf: IPX on, and the
+ * game's fixed CPU speed (`cycles=auto/max` can't keep real time in a browser). */
+export function tuneConf(conf, game) {
+  let out = ensureIpx(conf);
+  if (game?.cycles) {
+    if (/^\s*cycles\s*=.*$/im.test(out)) {
+      out = out.replace(/^\s*cycles\s*=.*$/im, "cycles=" + game.cycles);
+    } else if (/^\s*\[cpu\]\s*$/im.test(out)) {
+      out = out.replace(/^(\s*\[cpu\]\s*)$/im, "$1\r\ncycles=" + game.cycles);
+    } else {
+      const block = "[cpu]\r\ncycles=" + game.cycles + "\r\n\r\n";
+      const idx = out.search(/^\s*\[autoexec\]/im);
+      out = idx >= 0 ? out.slice(0, idx) + block + out.slice(idx) : out + "\r\n" + block;
+    }
+  }
+  return out;
 }
 
 function ensureIpx(conf) {
@@ -174,7 +196,35 @@ function ensureIpx(conf) {
   return idx >= 0 ? conf.slice(0, idx) + block + conf.slice(idx) : conf + "\r\n" + block;
 }
 
+/**
+ * Replace .jsdos/dosbox.conf inside a stored bundle (a new config string, or a
+ * function old => new) when the site's config has changed, so improvements reach players without re-loading their game files.
+ * @returns {Promise<Blob|null>} the updated bundle, or null if already current
+ */
+export async function updateBundleConf(blob, confOrFn) {
+  const files = await unzip(new Uint8Array(await blob.arrayBuffer()));
+  const key = Object.keys(files).find((p) => p.toLowerCase() === ".jsdos/dosbox.conf");
+  const old = key ? new TextDecoder().decode(files[key]) : "";
+  const conf = typeof confOrFn === "function" ? confOrFn(old) : confOrFn;
+  if (key && old === conf) return null;
+  files[key || ".jsdos/dosbox.conf"] = new TextEncoder().encode(conf);
+  return new Blob([await zip(files)], { type: "application/zip" });
+}
+
 /* --------------------------------------------------------------- launching */
+
+/** Delete js-dos' saved file changes for a game (settings, saved games). */
+export async function resetChanges(gameId) {
+  const name = `dosharbor-${gameId}.changes`.replace(/[^a-zA-Z0-9._-]/g, "_");
+  try {
+    const root = await navigator.storage.getDirectory();
+    const saves = await (await root.getDirectoryHandle("jsdos")).getDirectoryHandle("saves");
+    await saves.removeEntry(name);
+    return true;
+  } catch {
+    return false; // nothing saved yet
+  }
+}
 
 /** js-dos caches every bundle URL in OPFS. Our blob: URLs change on every
  * launch, so drop old blob entries to stop storage from growing. */
@@ -222,6 +272,8 @@ export function normalizeRoom(input) {
  */
 export async function launch(el, blob, o) {
   await cleanBlobCache();
+  // see scripts/build.mjs: plain audio by default, ?audio=worklet to compare
+  window.__dosharborAudioWorklet = new URLSearchParams(location.search).get("audio") === "worklet";
   const url = URL.createObjectURL(blob);
   const options = {
     url,
@@ -231,16 +283,62 @@ export async function launch(el, blob, o) {
     autoStart: true,
     autoSave: true,
     noCloud: true,
+    // Same rendering path dos.zone uses: the emulator worker draws straight
+    // to an OffscreenCanvas, keeping frame copies off the main thread.
+    offscreenCanvas: true,
+    renderBackend: "canvas",
     // stable key so saved games survive reloads even though the URL is a blob
     fsChanges: { urlToKey: () => `dosharbor-${o.gameId}.changes` },
   };
   if (o.mode === "host") options.startIpxServer = true;
   if (o.mode === "join") options.connectIpxAddress = o.room.address;
 
+  if (o.mode !== "solo") {
+    const relay = relayUrl();
+    if (relay) {
+      // our own relay: hand js-dos a ready network instance
+      const net = await connectRelay(relay, { onLog: o.onNetLog });
+      window.net = net;
+      options.sharedNet = net;
+    } else {
+      watchNetwork(o);
+    }
+  }
   const dos = window.Dos(el, options);
 
   if (o.mode === "host") hostRoom(o).catch((e) => o.onRoom?.({ error: e.message }));
   return dos;
+}
+
+/** Relay in use: `?server=` parameter, else config.js, else none (net.dos.zone). */
+export function relayUrl() {
+  const param = new URLSearchParams(location.search).get("server");
+  if (param && /^wss?:\/\//.test(param)) return param;
+  return RELAY_URL || "";
+}
+
+// The WebRTC networking library only reports problems on the console. Mirror
+// the relevant lines to the page, and warn if no peer id arrives in time.
+const NET_LOG = /signal|websocket|hello failed|peer id|connect failed|alias|blacklist|connection to peer|network error/i;
+function watchNetwork(o) {
+  for (const level of ["log", "info", "warn", "error"]) {
+    const orig = console[level].bind(console);
+    console[level] = (...args) => {
+      orig(...args);
+      const msg = args.map(String).join(" ");
+      if (NET_LOG.test(msg) && msg.length < 300) o.onNetLog?.(msg.trim());
+    };
+  }
+  setTimeout(() => {
+    if (!window.net?.peerId) {
+      o.onNetLog?.(
+        "Still no connection to the multiplayer server (net.dos.zone) after 20 s. " +
+          "Ad/tracker blockers, Brave Shields, VPNs or strict firewalls can block it. " +
+          "Try disabling them for this site, or another network/browser.",
+        true,
+      );
+    }
+  }, 20000);
 }
 
 async function waitForNet() {

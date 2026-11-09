@@ -1,0 +1,14 @@
+# One-click deploy of the multiplayer relay on Render (https://render.com).
+# Dashboard -> New -> Blueprint -> pick this repository.
+services:
+  - type: web
+    name: dosharbor-relay
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /
+    envVars:
+      - key: ALLOWED_ORIGINS
+        value: https://ll1234567890.github.io

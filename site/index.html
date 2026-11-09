@@ -54,7 +54,12 @@
           <p></p>
           <div class="tags"></div>
         </div>`;
-      a.querySelector(".cover").textContent = g.coverText;
+      const cover = a.querySelector(".cover");
+      cover.textContent = g.coverText;
+      if (g.cover) {
+        cover.classList.add("has-image");
+        cover.style.setProperty("--cover", `url("${g.cover}")`);
+      }
       a.querySelector("h2").textContent = g.title;
       a.querySelector("p").textContent = g.blurb;
       const tags = a.querySelector(".tags");

@@ -165,3 +165,25 @@ input[type="text"]:focus { outline: none; border-color: var(--accent); }
 .panel ol { list-style: decimal; }
 .panel ul { list-style: disc; }
 .dh-btn { text-transform: none; line-height: 1.2; }
+.net-log { font-family: var(--mono); font-size: 12px; word-break: break-word; }
+.net-log.err { color: var(--bad); }
+
+/* cover art (falls back to the gradient if the image fails to load) */
+.card .cover.has-image {
+  background:
+    linear-gradient(180deg, transparent 45%, rgba(0, 0, 0, .75)),
+    var(--cover) center / cover no-repeat,
+    radial-gradient(circle at 30% 30%, #3d5a2a 0, transparent 55%),
+    #1b1e17;
+  place-items: end start;
+  padding: 12px 14px;
+  font-size: 28px;
+}
+.hero.game-hero {
+  margin-top: 16px; padding: 56px 24px 28px; border-radius: var(--radius); border: 1px solid var(--line);
+  background:
+    linear-gradient(90deg, rgba(15, 17, 20, .92) 0%, rgba(15, 17, 20, .55) 60%, rgba(15, 17, 20, .25)),
+    var(--hero-bg) center 30% / cover no-repeat,
+    var(--panel);
+}
+.hero.game-hero p { color: #cfcabd; }
