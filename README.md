@@ -24,6 +24,17 @@ One-time setup: **Settings → Pages → Build and deployment → Source: GitHub
 
 The site will be available at `https://<user>.github.io/dos.zone-alternative/`.
 
+### Fallback: deploy without Actions
+
+If Actions can't run, push a prebuilt copy to the `gh-pages` branch:
+
+```bash
+npm install
+npm run deploy:branch
+```
+
+Then set **Settings → Pages → Source: Deploy from a branch → `gh-pages` / (root)**.
+
 ## Local development
 
 ```bash
