@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DOS Harbor</title>
+  <meta name="description" content="Play classic DOS games in your browser, with online multiplayer.">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="brand" href="./">DOS<span>Harbor</span></a>
+      <nav>
+        <a href="#about">About</a>
+        <a href="https://github.com/ll1234567890/dos.zone-alternative">Source</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <h1>Classic DOS games, in your browser, with friends.</h1>
+      <p>Bring your own copy of the game, load it once, and play solo or online. No installs and no accounts. Your files stay in your browser.</p>
+    </section>
+
+    <section class="grid" id="games" aria-label="Games"></section>
+
+    <section class="panel" id="about" style="margin-bottom:48px">
+      <h2>How it works</h2>
+      <ul>
+        <li>Games run in <a href="https://js-dos.com">js-dos</a>, a DOSBox build for the web.</li>
+        <li>This site does not host game files. You load your own copy, and it is kept in your browser's storage so you only do it once.</li>
+        <li>Multiplayer uses emulated IPX networking over WebRTC. One player hosts a room, shares the link, and friends join from anywhere.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">Not affiliated with dos.zone or any game publisher. All trademarks belong to their owners.</div>
+  </footer>
+
+  <script type="module">
+    import { GAMES } from "./assets/games.js";
+    const grid = document.getElementById("games");
+    for (const g of GAMES) {
+      const a = document.createElement("a");
+      a.className = "card";
+      a.href = g.href;
+      a.innerHTML = `
+        <div class="cover" aria-hidden="true"></div>
+        <div class="body">
+          <h2></h2>
+          <p></p>
+          <div class="tags"></div>
+        </div>`;
+      a.querySelector(".cover").textContent = g.coverText;
+      a.querySelector("h2").textContent = g.title;
+      a.querySelector("p").textContent = g.blurb;
+      const tags = a.querySelector(".tags");
+      for (const [text, cls] of [[String(g.year), ""], [g.genre, ""], ...(g.multiplayer ? [["Online multiplayer", "mp"]] : [])]) {
+        const t = document.createElement("span");
+        t.className = "tag " + cls;
+        t.textContent = text;
+        tags.append(t);
+      }
+      grid.append(a);
+    }
+  </script>
+</body>
+</html>
