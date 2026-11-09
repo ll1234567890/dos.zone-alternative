@@ -126,6 +126,8 @@ export async function buildBundle(files, game, onProgress = () => {}) {
     return { bytes: await zip(files), info: { source: "jsdos", exe: null } };
   }
 
+  if (game.kind === "win9x") return buildWin9xBundle(files, paths, game, onProgress);
+
   // Find the game executable (shallowest match wins).
   const exeMatches = paths
     .filter((p) => norm(p).split("/").pop().toUpperCase() === game.exe)
@@ -185,6 +187,43 @@ export function tuneConf(conf, game) {
     }
   }
   return out;
+}
+
+const DISK_EXT = /\.(img|ima|vhd|qcow2|hdd)$/i;
+const CD_EXT = /\.(iso|cue)$/i;
+
+/**
+ * Windows 9x games: the player brings a hard-disk image with Windows and the
+ * game installed. The largest image boots as C:, a second one becomes D:,
+ * and a CD image (with its .bin) is attached to the emulated IDE CD drive.
+ */
+async function buildWin9xBundle(files, paths, game, onProgress) {
+  const base = (p) => p.replace(/\\/g, "/").split("/").pop();
+  const disks = paths
+    .filter((p) => DISK_EXT.test(p))
+    .sort((a, b) => files[b].byteLength - files[a].byteLength)
+    .slice(0, 2);
+  if (!disks.length) {
+    throw new Error("No hard-disk image found. Load a Windows 95/98 disk image with the game installed (.img, .vhd or .qcow2), or a .jsdos bundle.");
+  }
+  const out = {};
+  const diskNames = disks.map((p, i) => {
+    const ext = base(p).split(".").pop().toLowerCase();
+    const name = `disks/${i === 0 ? "c" : "d"}.${ext}`;
+    out[name] = files[p];
+    return name;
+  });
+  for (const p of paths) {
+    // .cue files refer to their .bin by name, so keep original names
+    if (CD_EXT.test(p) || /\.bin$/i.test(p)) out["cd/" + base(p)] = files[p];
+  }
+  const cdFiles = Object.keys(out).filter((p) => p.startsWith("cd/"));
+  const cdImage = cdFiles.find((p) => /\.cue$/i.test(p)) || cdFiles.find((p) => /\.iso$/i.test(p)) || null;
+  const conf = game.dosboxConf({ disks: diskNames, cdImage });
+  out[".jsdos/dosbox.conf"] = new TextEncoder().encode(conf);
+  out[".jsdos/jsdos.json"] = new TextEncoder().encode(JSON.stringify({ version: "js-dos-v8" }));
+  onProgress("Packing disk image (this can take a while)…");
+  return { bytes: await zip(out), info: { source: "files", disks: diskNames, cdImage } };
 }
 
 function ensureIpx(conf) {
@@ -278,7 +317,7 @@ export async function launch(el, blob, o) {
   const options = {
     url,
     pathPrefix: EMULATORS_PATH,
-    backend: "dosbox",
+    backend: o.backend || "dosbox",
     theme: "dark",
     autoStart: true,
     autoSave: true,
