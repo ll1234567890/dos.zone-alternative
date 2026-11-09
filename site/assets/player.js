@@ -161,7 +161,7 @@ export async function buildBundle(files, game, onProgress = () => {}) {
   onProgress(`Packing ${outPaths.length} files…`);
   return {
     bytes: await zip(out),
-    info: { source: "files", exe: `${gameDir}\\${game.exe}`, cdImage, fileCount: outPaths.length },
+    info: { source: "files", exe: `${gameDir}\\${game.exe}`, gameDir, cdImage, fileCount: outPaths.length },
   };
 }
 
@@ -172,6 +172,19 @@ function ensureIpx(conf) {
   const block = "[ipx]\r\nipx=true\r\n\r\n";
   const idx = conf.search(/^\s*\[autoexec\]/im);
   return idx >= 0 ? conf.slice(0, idx) + block + conf.slice(idx) : conf + "\r\n" + block;
+}
+
+/**
+ * Replace .jsdos/dosbox.conf inside a stored bundle when the site's config has
+ * changed, so improvements reach players without re-loading their game files.
+ * @returns {Promise<Blob|null>} the updated bundle, or null if already current
+ */
+export async function updateBundleConf(blob, conf) {
+  const files = await unzip(new Uint8Array(await blob.arrayBuffer()));
+  const key = Object.keys(files).find((p) => p.toLowerCase() === ".jsdos/dosbox.conf");
+  if (key && new TextDecoder().decode(files[key]) === conf) return null;
+  files[key || ".jsdos/dosbox.conf"] = new TextEncoder().encode(conf);
+  return new Blob([await zip(files)], { type: "application/zip" });
 }
 
 /* --------------------------------------------------------------- launching */
@@ -237,10 +250,35 @@ export async function launch(el, blob, o) {
   if (o.mode === "host") options.startIpxServer = true;
   if (o.mode === "join") options.connectIpxAddress = o.room.address;
 
+  if (o.mode !== "solo") watchNetwork(o);
   const dos = window.Dos(el, options);
 
   if (o.mode === "host") hostRoom(o).catch((e) => o.onRoom?.({ error: e.message }));
   return dos;
+}
+
+// The WebRTC networking library only reports problems on the console. Mirror
+// the relevant lines to the page, and warn if no peer id arrives in time.
+const NET_LOG = /signal|websocket|hello failed|peer id|connect failed|alias|blacklist|connection to peer|network error/i;
+function watchNetwork(o) {
+  for (const level of ["log", "info", "warn", "error"]) {
+    const orig = console[level].bind(console);
+    console[level] = (...args) => {
+      orig(...args);
+      const msg = args.map(String).join(" ");
+      if (NET_LOG.test(msg) && msg.length < 300) o.onNetLog?.(msg.trim());
+    };
+  }
+  setTimeout(() => {
+    if (!window.net?.peerId) {
+      o.onNetLog?.(
+        "Still no connection to the multiplayer server (net.dos.zone) after 20 s. " +
+          "Ad/tracker blockers, Brave Shields, VPNs or strict firewalls can block it. " +
+          "Try disabling them for this site, or another network/browser.",
+        true,
+      );
+    }
+  }, 20000);
 }
 
 async function waitForNet() {

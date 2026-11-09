@@ -1,5 +1,5 @@
 import {
-  storage, readInput, filesFromDrop, buildBundle, launch, normalizeRoom,
+  storage, readInput, filesFromDrop, buildBundle, launch, normalizeRoom, updateBundleConf,
 } from "../../assets/player.js";
 
 const GAME = {
@@ -17,7 +17,9 @@ const GAME = {
     "[cpu]",
     "core=auto",
     "cputype=auto",
-    "cycles=max",
+    // Warcraft II needs roughly a fast 486. Unlimited "max" makes the emulator
+    // burn CPU the game doesn't use, starving video and audio in the browser.
+    "cycles=max limit 40000",
     "",
     "[mixer]",
     "rate=44100",
@@ -49,6 +51,13 @@ const status = (msg, kind = "") => {
 };
 
 let bundle = null; // { blob, info }
+
+/** Latest DOSBox config for bundles we built from loose files (null for user .jsdos bundles). */
+function currentConf(info) {
+  if (info?.source !== "files" || !info.exe) return null;
+  const gameDir = info.gameDir || info.exe.split("\\")[0];
+  return GAME.dosboxConf({ gameDir, exe: GAME.exe, cdImage: info.cdImage || null });
+}
 
 function renderFiles() {
   const ready = !!bundle;
@@ -161,6 +170,12 @@ function start(mode) {
     gameId: GAME.id,
     mode,
     room,
+    onNetLog: (msg, important) => {
+      const el = $("net-log");
+      el.classList.remove("hidden");
+      el.classList.toggle("err", !!important);
+      el.textContent = "Network: " + msg;
+    },
     onRoom: ({ code, error }) => {
       if (error) {
         info.textContent = "Hosting (room could not be created: " + error + ")";
@@ -188,7 +203,15 @@ function start(mode) {
 (async () => {
   try {
     const saved = await storage.get(GAME.id);
-    if (saved?.blob) bundle = { blob: saved.blob, info: saved.info || {} };
+    if (saved?.blob) {
+      bundle = { blob: saved.blob, info: saved.info || {} };
+      const conf = currentConf(bundle.info);
+      const updated = conf && (await updateBundleConf(bundle.blob, conf));
+      if (updated) {
+        bundle.blob = updated;
+        await storage.put(GAME.id, { ...saved, blob: updated });
+      }
+    }
   } catch (e) {
     console.warn("storage unavailable", e);
     status("Browser storage is unavailable (private mode?). You will need to load the files each visit.");

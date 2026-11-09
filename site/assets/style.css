@@ -165,3 +165,5 @@ input[type="text"]:focus { outline: none; border-color: var(--accent); }
 .panel ol { list-style: decimal; }
 .panel ul { list-style: disc; }
 .dh-btn { text-transform: none; line-height: 1.2; }
+.net-log { font-family: var(--mono); font-size: 12px; word-break: break-word; }
+.net-log.err { color: var(--bad); }
