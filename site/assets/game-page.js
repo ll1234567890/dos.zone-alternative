@@ -3,7 +3,6 @@
 //
 // A game page provides a GAME object:
 //   id, title          storage key and display name
-//   kind               "dos" (default) or "win9x" (Windows 95/98 disk image in DOSBox-X)
 //   exe, defaultDir    DOS games: program to find in the loaded files
 //   cycles             optional fixed CPU speed applied to any bundle
 //   backend            "dosbox" (default) or "dosboxX"
@@ -22,14 +21,12 @@ export function initGamePage(GAME) {
     el.className = "status " + kind;
   };
   const params = new URLSearchParams(location.search);
-  const isWin = GAME.kind === "win9x";
 
   let bundle = null; // { blob, info }
 
   /** Latest DOSBox config for bundles we built from loose files (null for user .jsdos bundles). */
   function currentConf(info) {
     if (info?.source !== "files") return null;
-    if (isWin) return info.disks ? GAME.dosboxConf({ disks: info.disks, cdImage: info.cdImage || null }) : null;
     if (!info.exe) return null;
     const gameDir = info.gameDir || info.exe.split("\\")[0];
     return GAME.dosboxConf({ gameDir, exe: GAME.exe, cdImage: info.cdImage || null });
@@ -45,7 +42,6 @@ export function initGamePage(GAME) {
       const mb = (blob.size / 1048576).toFixed(1);
       const parts = [`Game files loaded (${mb} MB)`];
       if (info.exe) parts.push(`runs ${info.exe}`);
-      if (info.disks) parts.push(`boots ${info.disks.map((d) => d.split("/").pop()).join(" + ")}`);
       if (info.source === "jsdos") parts.push("your own .jsdos bundle");
       else parts.push(info.cdImage ? "CD image attached" : "no CD image");
       $("ready-text").textContent = parts.join(" · ") + ".";
@@ -66,8 +62,7 @@ export function initGamePage(GAME) {
       status("Ready to play.", "ok");
     } catch (e) {
       console.error(e);
-      const oom = e instanceof RangeError || /allocation|memory/i.test(String(e?.message));
-      status(oom ? "The browser ran out of memory reading these files. Try a smaller (or .qcow2) disk image." : e.message || String(e), "err");
+      status(e.message || String(e), "err");
     }
   }
 
@@ -125,110 +120,11 @@ export function initGamePage(GAME) {
     if (e.key === "Enter" && bundle) start("join");
   });
 
-  function inviteLink(code) {
-    const u = new URL(location.href);
-    u.search = "";
-    u.hash = "";
-    u.searchParams.set("join", code);
-    const server = params.get("server");
-    if (server) u.searchParams.set("server", server);
-    return u.href;
-  }
-
-  function netLog(msg, important) {
-    const el = $("net-log");
-    el.classList.remove("hidden");
-    el.classList.toggle("err", !!important);
-    el.textContent = "Network: " + msg;
-  }
-
   function start(mode) {
     if (!bundle) return;
-    let room = null;
-    if (mode === "join") {
-      room = normalizeRoom($("join-code").value);
-      if (!room) {
-        status("Enter the room code or link from your host.", "err");
-        $("join-code").focus();
-        return;
-      }
-    }
-
-    $("setup").classList.add("hidden");
-    $("hero").classList.add("hidden");
-    $("game").classList.remove("hidden");
-
-    const info = $("game-info");
-    const hint = $("game-hint");
-    if (mode === "solo") {
-      info.textContent = "Single player";
-    } else if (mode === "host") {
-      info.textContent = "Hosting: creating room…";
-    } else {
-      info.innerHTML = "";
-      info.append("Joining room ", Object.assign(document.createElement("span"), { className: "room-code", textContent: room.code }));
-    }
-    hint.textContent = GAME.hints?.[mode] || "";
-
-    const running = launch($("dos"), bundle.blob, {
-      gameId: GAME.id,
-      backend: GAME.backend,
-      mode,
-      room,
-      onNetLog: netLog,
-      onRoom: ({ code, error }) => {
-        if (error) {
-          info.textContent = "Hosting (room could not be created: " + error + ")";
-          return;
-        }
-        info.innerHTML = "";
-        info.append("Hosting room ", Object.assign(document.createElement("span"), { className: "room-code", textContent: code }));
-        const copy = $("copy-link");
-        copy.classList.remove("hidden");
-        copy.onclick = async () => {
-          const link = inviteLink(code);
-          try {
-            await navigator.clipboard.writeText(link);
-            copy.textContent = "Copied!";
-          } catch {
-            prompt("Copy this invite link:", link);
-          }
-          setTimeout(() => (copy.textContent = "Copy invite link"), 1500);
-        };
-      },
-    }).catch((e) => {
-      console.error(e);
-      netLog(e.message || e, true);
-    });
-    keepSaved(running);
+    startGame({ gameId: GAME.id, blob: bundle.blob, backend: GAME.backend, hints: GAME.hints, mode, onError: status });
   }
 
-  // Mouse lock is off (like dos.zone), so js-dos rarely triggers its own save.
-  // DOS games: save when leaving or switching tabs. Windows games keep their
-  // whole disk image as one changed file, so saving is big and only safe after
-  // Windows shuts down: save on Leave only.
-  function keepSaved(running) {
-    const save = async () => {
-      const dos = await running;
-      if (!dos) return;
-      await Promise.race([dos.save(), new Promise((r) => setTimeout(r, isWin ? 30000 : 4000))]).catch(console.warn);
-    };
-    if (!isWin) {
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "hidden") save();
-      });
-    }
-    $("leave").addEventListener("click", async (e) => {
-      e.preventDefault();
-      const href = $("leave").href;
-      $("leave").textContent = "Saving…";
-      await save();
-      location.href = href;
-    });
-  }
-
-  // keep a custom relay (?server=) when leaving the game
-  if (params.get("server")) $("leave").href = "./?server=" + encodeURIComponent(params.get("server"));
 
   /* ---- init ---- */
   (async () => {
@@ -238,9 +134,7 @@ export function initGamePage(GAME) {
         bundle = { blob: saved.blob, info: saved.info || {} };
         // keep stored bundles on the current config: ours, or a patched .jsdos one
         const conf = currentConf(bundle.info) || ((old) => tuneConf(old, GAME));
-        // unpacking a multi-hundred-MB Windows disk on every visit is slow, so
-        // only DOS bundles are migrated automatically
-        const updated = isWin ? null : await updateBundleConf(bundle.blob, conf);
+        const updated = await updateBundleConf(bundle.blob, conf);
         if (updated) {
           bundle.blob = updated;
           await storage.put(GAME.id, { ...saved, blob: updated });
@@ -255,4 +149,109 @@ export function initGamePage(GAME) {
       status(bundle ? "You've been invited. Click Join." : "You've been invited. Load your game files, then click Join.");
     }
   })();
+}
+
+/**
+ * Switch the page to the game screen and run a bundle. Expects the shared
+ * game-screen markup (#setup, #hero, #game, #game-info, #game-hint, #net-log,
+ * #copy-link, #leave, #dos) and #join-code for join mode.
+ * @returns {boolean} false if the mode couldn't start (e.g. no room code)
+ */
+export function startGame({ gameId, blob, backend, hints, mode, onError = () => {} }) {
+  const $ = (id) => document.getElementById(id);
+  const params = new URLSearchParams(location.search);
+  let room = null;
+  if (mode === "join") {
+    room = normalizeRoom($("join-code").value);
+    if (!room) {
+      onError("Enter the room code or link from your host.", "err");
+      $("join-code").focus();
+      return false;
+    }
+  }
+
+  $("setup").classList.add("hidden");
+  $("hero")?.classList.add("hidden");
+  $("game").classList.remove("hidden");
+
+  const info = $("game-info");
+  if (mode === "solo") {
+    info.textContent = "Single player";
+  } else if (mode === "host") {
+    info.textContent = "Hosting: creating room…";
+  } else {
+    info.innerHTML = "";
+    info.append("Joining room ", Object.assign(document.createElement("span"), { className: "room-code", textContent: room.code }));
+  }
+  $("game-hint").textContent = hints?.[mode] || "";
+
+  const netLog = (msg, important) => {
+    const el = $("net-log");
+    el.classList.remove("hidden");
+    el.classList.toggle("err", !!important);
+    el.textContent = "Network: " + msg;
+  };
+  const inviteLink = (code) => {
+    const u = new URL(location.href);
+    const keep = ["game", "server"].map((k) => [k, params.get(k)]).filter(([, v]) => v);
+    u.search = "";
+    u.hash = "";
+    u.searchParams.set("join", code);
+    for (const [k, v] of keep) u.searchParams.set(k, v);
+    return u.href;
+  };
+
+  const running = launch($("dos"), blob, {
+    gameId,
+    backend,
+    mode,
+    room,
+    onNetLog: netLog,
+    onRoom: ({ code, error }) => {
+      if (error) {
+        info.textContent = "Hosting (room could not be created: " + error + ")";
+        return;
+      }
+      info.innerHTML = "";
+      info.append("Hosting room ", Object.assign(document.createElement("span"), { className: "room-code", textContent: code }));
+      const copy = $("copy-link");
+      copy.classList.remove("hidden");
+      copy.onclick = async () => {
+        const link = inviteLink(code);
+        try {
+          await navigator.clipboard.writeText(link);
+          copy.textContent = "Copied!";
+        } catch {
+          prompt("Copy this invite link:", link);
+        }
+        setTimeout(() => (copy.textContent = "Copy invite link"), 1500);
+      };
+    },
+  }).catch((e) => {
+    console.error(e);
+    netLog(e.message || e, true);
+  });
+
+  // Mouse lock is off by default, so js-dos rarely triggers its own save.
+  // Save game files when leaving the game or switching away from the tab.
+  const save = async () => {
+    const dos = await running;
+    if (!dos) return;
+    await Promise.race([dos.save(), new Promise((r) => setTimeout(r, 4000))]).catch(console.warn);
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") save();
+  });
+  // keep ?game= and a custom relay (?server=) when leaving the game
+  const back = new URLSearchParams();
+  for (const k of ["game", "server"]) if (params.get(k)) back.set(k, params.get(k));
+  $("leave").href = "./" + (back.toString() ? "?" + back : "");
+  $("leave").addEventListener("click", async (e) => {
+    e.preventDefault();
+    const href = $("leave").href;
+    $("leave").textContent = "Saving…";
+    await save();
+    location.href = href;
+  });
+  return true;
 }

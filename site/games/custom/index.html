@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Custom game · DOS Harbor</title>
+  <meta name="description" content="Run any DOS game in your browser: load a folder, zip or .jsdos bundle and configure DOSBox.">
+  <link rel="stylesheet" href="../../vendor/js-dos/js-dos.css">
+  <link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <a class="brand" href="../../">DOS<span>Harbor</span></a>
+      <nav><a href="../../">All games</a></nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero" id="hero">
+      <h1>Custom game</h1>
+      <p>Run any DOS game you own. Load its folder, a <code>.zip</code> or a <code>.jsdos</code> bundle, pick the program and tune DOSBox. Everything stays in your browser.</p>
+    </section>
+
+    <div class="player-layout setup" id="setup">
+      <div>
+        <!-- 1. games -->
+        <section class="panel" style="margin-bottom:20px">
+          <h2><span class="step-num">1</span> Your games</h2>
+          <div class="row" id="game-list-row">
+            <select id="game-list" aria-label="Saved custom games"></select>
+            <button class="dh-btn small" id="add-new" type="button">Add another game</button>
+          </div>
+          <div id="add-panel">
+            <div class="dropzone" id="drop">
+              <strong>Drop a game folder, .zip or .jsdos here</strong><br>
+              or pick it:
+              <div class="row" style="justify-content:center;margin-top:10px">
+                <button class="dh-btn" id="pick-zip" type="button">Choose .zip / .jsdos</button>
+                <button class="dh-btn" id="pick-dir" type="button">Choose folder</button>
+              </div>
+            </div>
+            <input type="file" id="in-zip" accept=".zip,.jsdos" hidden>
+            <input type="file" id="in-dir" webkitdirectory multiple hidden>
+            <p style="margin:0">A CD image (<code>.cue</code> + <code>.bin</code>, or <code>.iso</code>) in the folder or zip is mounted as drive D:.</p>
+          </div>
+          <p class="status" id="status" role="status" aria-live="polite"></p>
+        </section>
+
+        <!-- 2. settings -->
+        <section class="panel hidden" id="settings" style="margin-bottom:20px">
+          <h2><span class="step-num">2</span> Settings</h2>
+          <div class="form-grid">
+            <label>Name <input type="text" id="f-name" autocomplete="off" spellcheck="false"></label>
+            <label>Program to run <select id="f-program"></select></label>
+            <label>CPU speed
+              <select id="f-cycles">
+                <option value="fixed 3000">286-class (3000 cycles)</option>
+                <option value="fixed 10000">386 (10000)</option>
+                <option value="fixed 20000">486 (20000)</option>
+                <option value="fixed 30000">Fast 486 (30000, recommended)</option>
+                <option value="fixed 50000">Pentium (50000)</option>
+                <option value="fixed 80000">Fast Pentium (80000)</option>
+                <option value="auto">auto (can run below full speed)</option>
+                <option value="max">max (can run below full speed)</option>
+                <option value="custom">Custom…</option>
+              </select>
+            </label>
+            <label class="hidden" id="f-cycles-custom-wrap">Custom cycles <input type="text" id="f-cycles-custom" placeholder="e.g. fixed 40000"></label>
+            <label>Memory
+              <select id="f-memsize">
+                <option value="4">4 MB</option><option value="8">8 MB</option><option value="16">16 MB</option>
+                <option value="32">32 MB</option><option value="64">64 MB</option>
+              </select>
+            </label>
+            <label>Graphics card
+              <select id="f-machine">
+                <option value="svga_s3">SVGA (S3), most games</option>
+                <option value="vgaonly">VGA only</option>
+                <option value="ega">EGA</option>
+                <option value="cga">CGA</option>
+                <option value="tandy">Tandy</option>
+                <option value="hercules">Hercules</option>
+              </select>
+            </label>
+            <label>Sound card
+              <select id="f-sound">
+                <option value="sb16">Sound Blaster 16</option>
+                <option value="sbpro2">Sound Blaster Pro 2</option>
+                <option value="sbpro1">Sound Blaster Pro</option>
+                <option value="sb2">Sound Blaster 2.0</option>
+                <option value="sb1">Sound Blaster 1.0</option>
+                <option value="gus">Gravis Ultrasound (+ SB16)</option>
+                <option value="none">None (PC speaker only)</option>
+              </select>
+            </label>
+            <label>Emulator
+              <select id="f-backend">
+                <option value="dosbox">DOSBox (fastest)</option>
+                <option value="dosboxX">DOSBox-X (more compatible)</option>
+              </select>
+            </label>
+            <label class="check"><input type="checkbox" id="f-autolock"> Lock the mouse on click</label>
+            <label class="check"><input type="checkbox" id="f-ipx"> IPX networking (needed for online play)</label>
+          </div>
+          <details id="advanced">
+            <summary>Advanced: edit dosbox.conf</summary>
+            <p>Changes here update the settings above, and the other way round. Everything after <code>[autoexec]</code> runs at startup.</p>
+            <textarea id="f-conf" spellcheck="false" rows="18"></textarea>
+          </details>
+          <div class="row" style="margin-top:14px">
+            <button class="dh-btn primary" id="save" type="button" disabled>Save settings</button>
+            <button class="dh-btn small" id="export" type="button">Download .jsdos</button>
+            <button class="dh-btn small" id="reset-changes" type="button">Reset saved game progress</button>
+            <button class="dh-btn small" id="delete" type="button">Delete game</button>
+          </div>
+        </section>
+
+        <!-- 3. play -->
+        <section class="panel hidden" id="play">
+          <h2><span class="step-num">3</span> Play</h2>
+          <div class="modes">
+            <div class="mode">
+              <h3>Single player</h3>
+              <button class="dh-btn primary" data-mode="solo" type="button">Play</button>
+            </div>
+            <div class="mode">
+              <h3>Host an online game</h3>
+              <p>For games with IPX multiplayer. You get a room code and an invite link.</p>
+              <button class="dh-btn primary" data-mode="host" type="button">Host room</button>
+            </div>
+            <div class="mode">
+              <h3>Join a friend</h3>
+              <p>Load the same game first, then paste the room code or link.</p>
+              <div class="row">
+                <input type="text" id="join-code" placeholder="room code or link" autocomplete="off" spellcheck="false">
+                <button class="dh-btn primary" data-mode="join" type="button">Join</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <aside class="panel">
+        <h2>Tips</h2>
+        <ul>
+          <li>The program list is sorted by best guess. If the game doesn't start, try another program, or the game's <code>.BAT</code> file.</li>
+          <li>For a <code>.jsdos</code> bundle, "Keep the bundle's startup" runs its own <code>[autoexec]</code>.</li>
+          <li>Running slow? Lower the CPU speed. The game feels sluggish? Raise it. Check the % under TURBO in the js-dos sidebar: it should stay at 100%.</li>
+          <li>No sound? Run the game's SETUP or INSTALL program once (pick it as the program), choose the sound card set above (port 220, IRQ 7, DMA 1), then switch back.</li>
+          <li>Folder and file names longer than 8 characters are shortened to DOS names (for example <code>MYGAME~1</code>).</li>
+          <li>Online play: both players load the same game, one hosts, the other joins with the code. In the game, pick its IPX network option.</li>
+          <li>Progress saves when you click <em>Leave</em> or switch tabs.</li>
+        </ul>
+      </aside>
+    </div>
+
+    <section class="game-shell hidden" id="game">
+      <div class="game-bar">
+        <div id="game-info">Single player</div>
+        <div class="row">
+          <button class="dh-btn small hidden" id="copy-link" type="button">Copy invite link</button>
+          <a class="dh-btn small" href="./" id="leave">Leave</a>
+        </div>
+      </div>
+      <div id="dos"></div>
+      <p class="hint" id="game-hint"></p>
+      <p class="hint net-log hidden" id="net-log" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+
+  <script src="../../vendor/fflate.js"></script>
+  <script src="../../vendor/js-dos/js-dos.js"></script>
+  <script type="module" src="./custom.js"></script>
+</body>
+</html>
