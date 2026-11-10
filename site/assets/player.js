@@ -1,5 +1,5 @@
-// Shared player logic: turn the user's own game files into a js-dos bundle,
-// keep it in the browser, and launch it in single-player, host or join mode.
+// Shared player logic: read the player's own game files, keep bundles in the
+// browser, and launch them in single-player, host or join mode.
 //
 // Multiplayer: the host starts an IPX server inside DOSBox and registers a
 // short room alias; joiners look the alias up and connect. Packets go through
@@ -105,76 +105,12 @@ export function zip(files) {
   });
 }
 
-/* ---------------------------------------------------------- bundle building */
-
-const dosName = (s) => /^[A-Z0-9_\-~!#$%&'()@^{}]{1,8}$/i.test(s);
-
-/**
- * Build a .jsdos bundle from loose game files.
- * @param {Record<string, Uint8Array>} files
- * @param {object} game  { exe: "WAR2.EXE", defaultDir: "WAR2", dosboxConf(ctx) }
- */
-export async function buildBundle(files, game, onProgress = () => {}) {
-  const paths = Object.keys(files).filter((p) => !p.endsWith("/"));
-  const norm = (p) => p.replace(/\\/g, "/");
-
-  // Already a js-dos bundle? Use it exactly as it is: its author chose the
-  // config (e.g. made with the custom game page), so never rewrite it.
-  const confPath = paths.find((p) => norm(p).toLowerCase() === ".jsdos/dosbox.conf");
-  if (confPath) {
-    const conf = new TextDecoder().decode(files[confPath]);
-    const ipx = /^\s*\[ipx\][^[]*^\s*ipx\s*=\s*true/im.test(conf);
-    onProgress("Packing bundle…");
-    return { bytes: await zip(files), info: { source: "jsdos", exe: null, ipx } };
-  }
-
-  // Find the game executable (shallowest match wins).
-  const exeMatches = paths
-    .filter((p) => norm(p).split("/").pop().toUpperCase() === game.exe)
-    .sort((a, b) => norm(a).split("/").length - norm(b).split("/").length);
-  if (!exeMatches.length) {
-    throw new Error(`Could not find ${game.exe} in the files you picked. Pick the folder that contains it, or a .zip of that folder.`);
-  }
-  const exePath = norm(exeMatches[0]);
-  const rootDir = exePath.includes("/") ? exePath.slice(0, exePath.lastIndexOf("/") + 1) : "";
-  const parentName = rootDir.split("/").filter(Boolean).pop() || "";
-  const gameDir = dosName(parentName) ? parentName.toUpperCase() : game.defaultDir;
-
-  const out = {};
-  let cdImage = null;
-  for (const p of paths) {
-    const n = norm(p);
-    const lower = n.toLowerCase();
-    if (/\.(iso|cue|bin|img)$/.test(lower) && !n.startsWith(rootDir)) {
-      // CD image outside the game folder: keep it on a separate path
-      out["CD/" + n.split("/").pop()] = files[p];
-    } else if (n.startsWith(rootDir)) {
-      out[gameDir + "/" + n.slice(rootDir.length)] = files[p];
-    }
-  }
-  // Prefer a .cue (keeps CD audio), else an .iso
-  const outPaths = Object.keys(out);
-  cdImage =
-    outPaths.find((p) => p.toLowerCase().endsWith(".cue")) ||
-    outPaths.find((p) => p.toLowerCase().endsWith(".iso")) ||
-    null;
-  if (cdImage) cdImage = "C:\\" + cdImage.replace(/\//g, "\\");
-
-  const conf = game.dosboxConf({ gameDir, exe: game.exe, cdImage });
-  out[".jsdos/dosbox.conf"] = new TextEncoder().encode(conf);
-  out[".jsdos/jsdos.json"] = new TextEncoder().encode(JSON.stringify({ version: "js-dos-v8" }));
-
-  onProgress(`Packing ${outPaths.length} files…`);
-  return {
-    bytes: await zip(out),
-    info: { source: "files", exe: `${gameDir}\\${game.exe}`, gameDir, cdImage, fileCount: outPaths.length },
-  };
-}
+/* ---------------------------------------------------------- bundle editing */
 
 /**
  * Replace .jsdos/dosbox.conf inside a stored bundle (a new config string, or a
- * function old => new) when the site's config has changed, so improvements reach players without re-loading their game files.
- * @returns {Promise<Blob|null>} the updated bundle, or null if already current
+ * function old => new).
+ * @returns {Promise<Blob|null>} the updated bundle, or null if unchanged
  */
 export async function updateBundleConf(blob, confOrFn) {
   const files = await unzip(new Uint8Array(await blob.arrayBuffer()));
@@ -262,6 +198,8 @@ export async function launch(el, blob, o) {
     // to an OffscreenCanvas, keeping frame copies off the main thread.
     offscreenCanvas: true,
     renderBackend: "canvas",
+    // narrow sidebar on phones leaves more room for the game
+    thinSidebar: window.matchMedia("(max-width: 700px)").matches,
     // stable key so saved games survive reloads even though the URL is a blob
     fsChanges: { urlToKey: () => `dosharbor-${o.gameId}.changes` },
   };

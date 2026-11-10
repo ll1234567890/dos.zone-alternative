@@ -1,9 +1,9 @@
-// Custom game page: any DOS game folder, zip or .jsdos bundle, with every
-// DOSBox setting editable. Games are stored in IndexedDB as "custom:<id>".
-import { storage, readInput, filesFromDrop, zip, updateBundleConf, resetChanges } from "../../assets/player.js";
-import { startGame } from "../../assets/game-page.js";
-import { initPerfHint } from "../../assets/perf-hint.js";
-import { getValue, setValue, getAutoexec, setAutoexec, baseConf, launchScript } from "../../assets/dosconf.js";
+// DOS Harbor: any DOS game folder, zip or .jsdos bundle the player owns, with
+// every DOSBox setting editable. Games are stored in IndexedDB as "custom:<id>".
+import { storage, readInput, filesFromDrop, zip, updateBundleConf, resetChanges } from "./assets/player.js";
+import { startGame } from "./assets/game-screen.js";
+import { initPerfHint } from "./assets/perf-hint.js";
+import { getValue, setValue, getAutoexec, setAutoexec, baseConf, launchScript } from "./assets/dosconf.js";
 
 const $ = (id) => document.getElementById(id);
 const PREFIX = "custom:";
@@ -303,7 +303,7 @@ $("add-new").addEventListener("click", () => {
   $("add-panel").classList.toggle("hidden");
 });
 $("pick-zip").onclick = () => $("in-zip").click();
-$("pick-dir").onclick = () => $("in-dir").click();
+$("pick-dir").onclick = () => $("in-dir").click(); // hidden on touch screens
 $("in-zip").onchange = (e) => addGame(e.target.files, e.target.files[0]?.name);
 $("in-dir").onchange = (e) => addGame(e.target.files, e.target.files[0]?.webkitRelativePath.split("/")[0]);
 const drop = $("drop");

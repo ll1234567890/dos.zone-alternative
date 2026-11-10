@@ -1,20 +1,19 @@
 # DOS Harbor (dos.zone alternative)
 
-A small, static, open-source site for playing DOS games in the browser, hosted on GitHub Pages.
-It currently has one game: **Warcraft II: Tides of Darkness**, playable solo or **online with friends**.
+A small, static, open-source site for playing DOS games you own in the browser, hosted on GitHub Pages. It works on desktop and phones.
 
-- Runs on [js-dos 8.5.3](https://js-dos.com) (DOSBox compiled to WebAssembly). The player is vendored, so everything is served from this site.
-- **Multiplayer:** DOSBox emulates an IPX network. The host gets a short room code and an invite link (`…/games/warcraft2/?join=<code>`). Packets travel through **our own relay server** (`server/`), which also works behind strict NATs. If no relay is configured, the site falls back to js-dos' built-in WebRTC networking via the public `net.dos.zone` server.
-- **No game files are hosted here.** Each player loads their own copy of the DOS version (a folder or `.zip` that contains `WAR2.EXE`, or a ready-made `.jsdos` bundle). The site turns it into a js-dos bundle in the browser and keeps it in IndexedDB, so you only load it once. Saved games persist in the browser (OPFS).
-- An optional CD image (`.cue`/`.bin` or `.iso`) next to the game is mounted as `D:` for CD music and cutscenes.
+- **Bring any DOS game:** load its folder, a `.zip` or a `.jsdos` bundle. The site picks the program to run (ranked guess over every `.EXE`/`.COM`/`.BAT`) and builds a js-dos bundle in the browser. Games are kept in IndexedDB, so you only load them once, and you can keep several.
+- **Every DOSBox setting is editable:** program, CPU speed, memory, graphics and sound card, mouse lock, IPX, emulator (DOSBox or DOSBox-X), or the full `dosbox.conf`. The form and the config editor stay in sync.
+- **A `.jsdos` you load is used exactly as it is**, config included. **Download .jsdos** exports any game, with your settings, as one self-contained file.
+- Runs on [js-dos 8.5.3](https://js-dos.com) (DOSBox compiled to WebAssembly), vendored so everything is served from this site. Saved games persist in the browser (OPFS).
+- **Online multiplayer** for games with IPX network play: one player hosts a room and shares the invite link (`…/?join=<code>`), friends join. Packets travel through **our own relay server** (`server/`). Without a relay configured, the site falls back to js-dos' WebRTC networking via `net.dos.zone`.
+- **No game files are hosted here.**
 
-## Playing online (Warcraft II)
+## Playing online
 
-1. **Host:** open the Warcraft II page, click **Host room**, then **Copy invite link** and send it to your friends.
-   In the game, choose *Multi Player Game → IPX Network → Create Game*.
-2. **Friends:** open the link and click **Join**. Once connected, choose *Multi Player Game → IPX Network* and pick the host's game.
-
-Everyone needs their own copy, ideally the same version.
+1. Both players load the same game.
+2. **Host:** click **Host room**, then **Copy invite link** and send it. In the game, open its multiplayer menu and pick the IPX network option, then create a game.
+3. **Friends:** open the link, select the game and click **Join**. Once connected, pick IPX in the game and join the host's game.
 
 ## Deploying to GitHub Pages
 
@@ -51,9 +50,9 @@ export const RELAY_URL = "wss://dosharbor-relay.onrender.com";
 
 Environment variables: `PORT` (default 8787), `ALLOWED_ORIGINS` (comma-separated list of site origins allowed to connect; empty allows all) and `GRACE_MS` (default 180000).
 
-If a player's connection drops (hidden tab, Wi-Fi blip, sleeping laptop), the relay keeps their peer ID and room for `GRACE_MS`. The browser reconnects and resumes the same session, so the game continues: the other players see Warcraft II's "Waiting for players" dialog until then.
+If a player's connection drops (hidden tab, Wi-Fi blip, sleeping laptop), the relay keeps their peer ID and room for `GRACE_MS`. The browser reconnects and resumes the same session, so the game continues: the other players see the game's own "waiting for players" screen until then (tested with Warcraft II).
 
-To try a relay without changing the config, add `?server=wss://your-relay` to the game page URL. Invite links keep it.
+To try a relay without changing the config, add `?server=wss://your-relay` to the site URL. Invite links keep it.
 
 ## Local development
 
@@ -66,25 +65,17 @@ npm start          # builds into _site/ and serves it on http://localhost:8080
 
 ```
 site/
-  index.html                 game library
-  assets/games.js            catalog (add new games here)
-  assets/player.js           shared logic: bundle building, storage, launching, rooms
+  index.html, app.js         the app: game list, settings, play modes
+  assets/player.js           storage, reading files, launching js-dos, rooms
+  assets/game-screen.js      the running-game screen (leave/save, invite link)
+  assets/dosconf.js          read/edit dosbox.conf keys and [autoexec]
+  assets/perf-hint.js        "turn on JavaScript optimization" prompt
   assets/relay-net.js        browser client for the relay (js-dos NetInstance)
   assets/config.js           relay URL
   assets/style.css
-  games/warcraft2/           Warcraft II page and its DOSBox config
+  games/*/index.html         redirects from old addresses
 scripts/build.mjs            assembles _site/ (site + vendored js-dos and fflate)
 scripts/serve.mjs            tiny local static server
 server/                      multiplayer relay (Node.js + ws), Dockerfile
 render.yaml                  Render blueprint for the relay
 ```
-
-### Adding another game
-
-1. Add an entry to `site/assets/games.js`.
-2. Copy `site/games/warcraft2/` to `site/games/<id>/` and change the `GAME` object in `game.js`: the executable name, folder name and `dosboxConf`.
-
-## Legal
-
-This project does not distribute any copyrighted game data. Warcraft is a trademark of Blizzard Entertainment.
-This site is not affiliated with Blizzard, dos.zone or js-dos. js-dos is GPL-2.0 licensed.
