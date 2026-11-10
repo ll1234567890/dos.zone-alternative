@@ -12,8 +12,10 @@
 import {
   storage, readInput, filesFromDrop, buildBundle, launch, normalizeRoom, updateBundleConf, tuneConf, resetChanges,
 } from "./player.js";
+import { initPerfHint, watchGameSpeed } from "./perf-hint.js";
 
 export function initGamePage(GAME) {
+  initPerfHint();
   const $ = (id) => document.getElementById(id);
   const status = (msg, kind = "") => {
     const el = $("status");
@@ -231,6 +233,8 @@ export function startGame({ gameId, blob, backend, hints, mode, onError = () => 
     console.error(e);
     netLog(e.message || e, true);
   });
+
+  watchGameSpeed();
 
   // Mouse lock is off by default, so js-dos rarely triggers its own save.
   // Save game files when leaving the game or switching away from the tab.

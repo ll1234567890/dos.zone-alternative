@@ -2,6 +2,7 @@
 // DOSBox setting editable. Games are stored in IndexedDB as "custom:<id>".
 import { storage, readInput, filesFromDrop, zip, updateBundleConf, resetChanges } from "../../assets/player.js";
 import { startGame } from "../../assets/game-page.js";
+import { initPerfHint } from "../../assets/perf-hint.js";
 import { getValue, setValue, getAutoexec, setAutoexec, baseConf, launchScript } from "../../assets/dosconf.js";
 
 const $ = (id) => document.getElementById(id);
@@ -366,6 +367,8 @@ document.querySelectorAll("[data-mode]").forEach((btn) => {
 if (params.get("join")) $("join-code").value = params.get("join");
 
 /* -------------------------------------------------------------------- init */
+
+initPerfHint();
 
 refreshList().then(() => {
   if (params.get("join")) {
