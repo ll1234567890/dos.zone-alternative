@@ -118,13 +118,14 @@ export async function buildBundle(files, game, onProgress = () => {}) {
   const paths = Object.keys(files).filter((p) => !p.endsWith("/"));
   const norm = (p) => p.replace(/\\/g, "/");
 
-  // Already a js-dos bundle? Use it, only making sure IPX is enabled.
+  // Already a js-dos bundle? Use it exactly as it is: its author chose the
+  // config (e.g. made with the custom game page), so never rewrite it.
   const confPath = paths.find((p) => norm(p).toLowerCase() === ".jsdos/dosbox.conf");
   if (confPath) {
     const conf = new TextDecoder().decode(files[confPath]);
-    files[confPath] = new TextEncoder().encode(tuneConf(conf, game));
+    const ipx = /^\s*\[ipx\][^[]*^\s*ipx\s*=\s*true/im.test(conf);
     onProgress("Packing bundle…");
-    return { bytes: await zip(files), info: { source: "jsdos", exe: null } };
+    return { bytes: await zip(files), info: { source: "jsdos", exe: null, ipx } };
   }
 
   // Find the game executable (shallowest match wins).
@@ -168,33 +169,6 @@ export async function buildBundle(files, game, onProgress = () => {}) {
     bytes: await zip(out),
     info: { source: "files", exe: `${gameDir}\\${game.exe}`, gameDir, cdImage, fileCount: outPaths.length },
   };
-}
-
-/** Apply our required settings to someone else's dosbox.conf: IPX on, and the
- * game's fixed CPU speed (`cycles=auto/max` can't keep real time in a browser). */
-export function tuneConf(conf, game) {
-  let out = ensureIpx(conf);
-  if (game?.cycles) {
-    if (/^\s*cycles\s*=.*$/im.test(out)) {
-      out = out.replace(/^\s*cycles\s*=.*$/im, "cycles=" + game.cycles);
-    } else if (/^\s*\[cpu\]\s*$/im.test(out)) {
-      out = out.replace(/^(\s*\[cpu\]\s*)$/im, "$1\r\ncycles=" + game.cycles);
-    } else {
-      const block = "[cpu]\r\ncycles=" + game.cycles + "\r\n\r\n";
-      const idx = out.search(/^\s*\[autoexec\]/im);
-      out = idx >= 0 ? out.slice(0, idx) + block + out.slice(idx) : out + "\r\n" + block;
-    }
-  }
-  return out;
-}
-
-function ensureIpx(conf) {
-  if (/^\s*\[ipx\]/im.test(conf)) {
-    return conf.replace(/^(\s*ipx\s*=\s*)false/im, "$1true");
-  }
-  const block = "[ipx]\r\nipx=true\r\n\r\n";
-  const idx = conf.search(/^\s*\[autoexec\]/im);
-  return idx >= 0 ? conf.slice(0, idx) + block + conf.slice(idx) : conf + "\r\n" + block;
 }
 
 /**
