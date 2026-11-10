@@ -10,10 +10,12 @@
 //   hints              {solo, host, join} text shown under the game
 //   dosboxConf(ctx)    builds dosbox.conf for loaded files
 import {
-  storage, readInput, filesFromDrop, buildBundle, launch, normalizeRoom, updateBundleConf, tuneConf, resetChanges,
+  storage, readInput, filesFromDrop, buildBundle, launch, normalizeRoom, updateBundleConf, resetChanges,
 } from "./player.js";
+import { initPerfHint, watchGameSpeed } from "./perf-hint.js";
 
 export function initGamePage(GAME) {
+  initPerfHint();
   const $ = (id) => document.getElementById(id);
   const status = (msg, kind = "") => {
     const el = $("status");
@@ -42,7 +44,10 @@ export function initGamePage(GAME) {
       const mb = (blob.size / 1048576).toFixed(1);
       const parts = [`Game files loaded (${mb} MB)`];
       if (info.exe) parts.push(`runs ${info.exe}`);
-      if (info.source === "jsdos") parts.push("your own .jsdos bundle");
+      if (info.source === "jsdos") {
+        parts.push("your own .jsdos bundle, config used as is");
+        if (GAME.multiplayer && info.ipx === false) parts.push("note: IPX is off in its config, so online play won't connect");
+      }
       else parts.push(info.cdImage ? "CD image attached" : "no CD image");
       $("ready-text").textContent = parts.join(" · ") + ".";
     }
@@ -132,9 +137,10 @@ export function initGamePage(GAME) {
       const saved = await storage.get(GAME.id);
       if (saved?.blob) {
         bundle = { blob: saved.blob, info: saved.info || {} };
-        // keep stored bundles on the current config: ours, or a patched .jsdos one
-        const conf = currentConf(bundle.info) || ((old) => tuneConf(old, GAME));
-        const updated = await updateBundleConf(bundle.blob, conf);
+        // keep bundles we built from loose files on the current config;
+        // a player's own .jsdos keeps its config untouched
+        const conf = currentConf(bundle.info);
+        const updated = conf ? await updateBundleConf(bundle.blob, conf) : null;
         if (updated) {
           bundle.blob = updated;
           await storage.put(GAME.id, { ...saved, blob: updated });
@@ -231,6 +237,8 @@ export function startGame({ gameId, blob, backend, hints, mode, onError = () => 
     console.error(e);
     netLog(e.message || e, true);
   });
+
+  watchGameSpeed();
 
   // Mouse lock is off by default, so js-dos rarely triggers its own save.
   // Save game files when leaving the game or switching away from the tab.
